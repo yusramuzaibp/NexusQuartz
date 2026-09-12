@@ -175,4 +175,3 @@ def render_ai_assistant_page():
 #
 # That's it — no API key, no extra installs, works immediately.
 # =======================================================================
-print("Hello")
