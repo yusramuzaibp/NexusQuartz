@@ -1,7 +1,22 @@
-# multiple-disease-prediction-streamlit-app
-This repository contains the codebase for "Multiple Disease Prediction Streamlit App". The training notebooks &amp; the datasets are also provided in the respective folders. 
+# Multiple Disease Prediction
 
-app.py is the streamlit app code.
-run the command "**pip install -r requirements.txt**" to install the required dependencies for the streamlit app.
+Streamlit app that predicts diabetes, heart disease, and Parkinson's risk from patient input using pre-trained scikit-learn models, with an optional keyword-based AI health assistant.
 
-You may need to install additional libraries for running the jupyter notebooks.
+## Structure
+
+* `saved model/` — trained model files (`.sav`), loaded by the app
+* `multiple_disease_pred1.py` — the Streamlit app (sidebar navigation, input forms, predictions)
+* `chatbot_snippet.py` — keyword-based "AI Health Assistant" chatbot, pluggable into the sidebar
+* `requirements.txt` — Python dependencies
+
+## Setup
+
+```
+pip install -r requirements.txt
+```
+
+## Run
+
+```
+streamlit run "multiple_disease_pred1.py"
+```
