@@ -48,3 +48,6 @@ desktop.ini
 
 # ==== Misc project-specific ====
 streamlit run command.txt
+
+# ==== Local database files ====
+*.db 
