@@ -1,19 +1,234 @@
 # -*- coding: utf-8 -*-
+import os
 import pickle
+import sqlite3
+import hashlib
+import json
 from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 from streamlit_option_menu import option_menu
 
+from chatbot_snippet import bot_reply, render_ai_assistant_page
+
+
+# ---------------------------------------------------------------------
+# page config -- must be the very first Streamlit command in the file
+# ---------------------------------------------------------------------
+st.set_page_config(page_title="Multiple Disease Prediction", layout="wide", page_icon="🧑‍⚕️")
+
+
+# =======================================================================
+# LOGIN / SIGN UP
+# =======================================================================
+
+DB_NAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
+
+
+def create_database():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    """)
+    # Stores every prediction ever run, tied to the user who ran it, so
+    # "previous records" persist across logins/restarts instead of only
+    # living in st.session_state.history for the current session.
+    # inputs_json holds every clinical parameter the user typed in
+    # (BMI, Pregnancies, Glucose, etc. for Diabetes; age, cp, chol...
+    # for Heart Disease; fo, jitter, shimmer... for Parkinson's) so the
+    # full record -- not just the verdict -- can be reviewed/exported later.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            condition_name TEXT NOT NULL,
+            result TEXT NOT NULL,
+            risk TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            inputs_json TEXT,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    """)
+    # Migration safety net: if predictions already existed from the
+    # earlier version of this app (before inputs were tracked), add the
+    # missing column instead of erroring out.
+    cursor.execute("PRAGMA table_info(predictions)")
+    existing_cols = [col[1] for col in cursor.fetchall()]
+    if 'inputs_json' not in existing_cols:
+        cursor.execute("ALTER TABLE predictions ADD COLUMN inputs_json TEXT")
+    conn.commit()
+    conn.close()
+
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def create_user(name, email, password):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+            (name, email, hash_password(password)),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+
+def login_user(email, password):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, name, email FROM users WHERE email = ? AND password = ?",
+        (email, hash_password(password)),
+    )
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def save_prediction_to_db(user_id, condition, result, risk, timestamp, inputs):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO predictions (user_id, condition_name, result, risk, timestamp, inputs_json) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, condition, result, risk, timestamp, json.dumps(inputs)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_predictions(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT condition_name, result, risk, timestamp, inputs_json FROM predictions "
+        "WHERE user_id = ? ORDER BY timestamp DESC",
+        (user_id,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    records = []
+    for cond, result, risk, timestamp, inputs_json in rows:
+        try:
+            inputs = json.loads(inputs_json) if inputs_json else {}
+        except (TypeError, ValueError):
+            inputs = {}
+        records.append({
+            'condition': cond,
+            'result': result,
+            'risk': risk,
+            'timestamp': timestamp,
+            'inputs': inputs,
+        })
+    return records
+
+
+def clear_user_predictions(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM predictions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+create_database()
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "user_name" not in st.session_state:
+    st.session_state.user_name = ""
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+
+if not st.session_state.logged_in:
+
+    st.markdown(
+        """
+        <div style="text-align:center;">
+        <h1>🧑‍⚕️ Multiple Disease Prediction</h1>
+        <p style="font-size:18px;">Log in or create an account to continue.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    login_tab, signup_tab = st.tabs(["🔐 Login", "📝 Sign Up"])
+
+    with login_tab:
+        st.subheader("Login to Your Account")
+        email = st.text_input("Email", placeholder="Enter your email", key="login_email")
+        password = st.text_input("Password", type="password", placeholder="Enter your password", key="login_password")
+
+        if st.button("🔐 Login", use_container_width=True):
+            if email == "" or password == "":
+                st.warning("⚠️ Please enter your email and password.")
+            else:
+                user = login_user(email, password)
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = user[0]
+                    st.session_state.user_name = user[1]
+                    st.session_state.history = get_user_predictions(user[0])
+                    st.success("✅ Login successful!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid email or password.")
+
+    with signup_tab:
+        st.subheader("Create Your Account")
+        name = st.text_input("Full Name", placeholder="Enter your name", key="signup_name")
+        email = st.text_input("Email", placeholder="Enter your email", key="signup_email")
+        password = st.text_input("Password", type="password", placeholder="Create a password", key="signup_password")
+        confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm your password", key="confirm_password")
+
+        if st.button("📝 Create Account", use_container_width=True):
+            if not name or not email or not password or not confirm_password:
+                st.warning("⚠️ Please fill in all fields.")
+            elif password != confirm_password:
+                st.error("❌ Passwords do not match.")
+            elif len(password) < 6:
+                st.warning("⚠️ Password must contain at least 6 characters.")
+            else:
+                result = create_user(name, email, password)
+                if result:
+                    st.success("✅ Account created successfully!")
+                    st.info("You can now go to the Login tab and log in.")
+                else:
+                    st.error("❌ An account with this email already exists.")
+
+    st.stop()  # nothing below this line runs until the user logs in
+
+
+# =======================================================================
+# EVERYTHING BELOW ONLY RUNS AFTER A SUCCESSFUL LOGIN
+# =======================================================================
+
 
 # ---------------------------------------------------------------------
 # loading the saved models
-# NOTE: double-check this path matches your actual folder name.
+# Path is relative to this file's location, so it works on any machine
+# and on Streamlit Community Cloud, not just your local PC.
 # ---------------------------------------------------------------------
-diabetes_model = pickle.load(open('C:/Users/malha/OneDrive/Desktop/Multiple disease Prediction/saved model/diabetes_model.sav', 'rb'))
-heart_disease_model = pickle.load(open('C:/Users/malha/OneDrive/Desktop/Multiple disease Prediction/saved model/heart_disease_model.sav', 'rb'))
-parkinsons_model = pickle.load(open('C:/Users/malha/OneDrive/Desktop/Multiple disease Prediction/saved model/parkinsons_model.sav', 'rb'))
+working_dir = os.path.dirname(os.path.abspath(__file__))
+
+diabetes_model = pickle.load(open(f'{working_dir}/saved_models/diabetes_model.sav', 'rb'))
+heart_disease_model = pickle.load(open(f'{working_dir}/saved_models/heart_disease_model.sav', 'rb'))
+parkinsons_model = pickle.load(open(f'{working_dir}/saved_models/parkinsons_model.sav', 'rb'))
 
 
 # ---------------------------------------------------------------------
@@ -25,26 +240,58 @@ if 'history' not in st.session_state:
     st.session_state.history = []  # each entry: {condition, result, risk, timestamp}
 
 
-def log_prediction(condition, result, risk):
+def log_prediction(condition, result, risk, inputs=None):
+    inputs = inputs or {}
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     st.session_state.history.append({
         'condition': condition,
         'result': result,
         'risk': risk,               # 'Low' or 'High'
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'timestamp': timestamp,
+        'inputs': inputs,
     })
+    # Persist so this shows up under "Previous Records" -- including every
+    # parameter the user typed in -- even after logging out / restarting
+    # the app, not just for this session.
+    save_prediction_to_db(st.session_state.user_id, condition, result, risk, timestamp, inputs)
+
+
+def check_ranges(values, specs):
+    """specs: list of (label, min, max) matched by position to `values`.
+    Returns a list of human-readable warning strings for anything
+    outside a plausible range (catches typos like BMI=250 or an
+    extra/missing zero, without needing a real clinical bound check).
+    """
+    problems = []
+    for val, (label, lo, hi) in zip(values, specs):
+        if not (lo <= val <= hi):
+            problems.append(
+                f"- **{label}** = {val} looks out of the expected range "
+                f"({lo}–{hi}). Please double-check this value."
+            )
+    return problems
 
 
 # ---------------------------------------------------------------------
 # sidebar for navigation
 # ---------------------------------------------------------------------
 with st.sidebar:
+    st.markdown(f"### 👋 Welcome, **{st.session_state.user_name}**")
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.user_name = ""
+        st.session_state.user_id = None
+        st.rerun()
+    st.divider()
+
     selected = option_menu('Multiple Disease Prediction System',
                             ['Dashboard',
                              'Disease Prediction',
-                             'AI chatbot',
-                             'Hospital and Specialist'
-                             'settings'],
-                            icons=['speedometer2', 'clipboard2-pulse', 'chat-dots'],
+                             'Previous Records',
+                             'AI Chatbot',
+                             'Find a Specialist'],
+                            icons=['speedometer2', 'clipboard2-pulse',
+                                   'clock-history', 'chat-dots', 'geo-alt'],
                             default_index=0)
 
 
@@ -258,16 +505,37 @@ if selected == 'Disease Prediction':
                 else:
                     try:
                         user_input = [float(x) for x in user_input]
-                        diab_prediction = diabetes_model.predict([user_input])
 
-                        if diab_prediction[0] == 1:
-                            diab_diagnosis = 'The person is Diabetic'
-                            log_prediction('Diabetes', diab_diagnosis, 'High')
+                        range_specs = [
+                            ("Pregnancies", 0, 20),
+                            ("Glucose", 40, 300),
+                            ("Blood Pressure", 40, 200),
+                            ("Skin Thickness", 5, 100),
+                            ("Insulin", 5, 900),
+                            ("BMI", 10, 70),
+                            ("Diabetes Pedigree Function", 0.05, 3.0),
+                            ("Age", 1, 120),
+                        ]
+                        problems = check_ranges(user_input, range_specs)
+
+                        if problems:
+                            st.warning(
+                                "Some values look unusual — please double-check "
+                                "before predicting:\n" + "\n".join(problems)
+                            )
                         else:
-                            diab_diagnosis = 'The person is Not Diabetic'
-                            log_prediction('Diabetes', diab_diagnosis, 'Low')
+                            diab_prediction = diabetes_model.predict([user_input])
+                            input_labels = [label for label, _, _ in range_specs]
+                            inputs_dict = dict(zip(input_labels, user_input))
 
-                        st.success(diab_diagnosis)
+                            if diab_prediction[0] == 1:
+                                diab_diagnosis = 'The person is Diabetic'
+                                log_prediction('Diabetes', diab_diagnosis, 'High', inputs_dict)
+                            else:
+                                diab_diagnosis = 'The person is Not Diabetic'
+                                log_prediction('Diabetes', diab_diagnosis, 'Low', inputs_dict)
+
+                            st.success(diab_diagnosis)
                     except ValueError:
                         st.error('Please enter valid numeric values in all fields.')
 
@@ -349,16 +617,45 @@ if selected == 'Disease Prediction':
                 else:
                     try:
                         user_input = [float(x) for x in user_input]
-                        heart_prediction = heart_disease_model.predict([user_input])
 
-                        if heart_prediction[0] == 1:
-                            heart_diagnosis = 'The person has heart disease'
-                            log_prediction('Heart Disease', heart_diagnosis, 'High')
+                        range_specs = [
+                            ("Age", 1, 120),
+                            ("Sex", 0, 1),
+                            ("Chest Pain Type", 0, 3),
+                            ("Resting Blood Pressure", 60, 250),
+                            ("Cholesterol", 100, 600),
+                            ("Fasting Blood Sugar", 0, 1),
+                            ("Resting ECG", 0, 2),
+                            ("Max Heart Rate", 60, 220),
+                            ("Exercise Induced Angina", 0, 1),
+                            ("ST Depression", 0, 10),
+                            ("Slope", 0, 2),
+                            ("Major Vessels (ca)", 0, 3),
+                            ("Thalassemia", 1, 3),
+                        ]
+                        problems = check_ranges(user_input, range_specs)
+
+                        if problems:
+                            st.warning(
+                                "Some values look unusual — please double-check "
+                                "before predicting:\n" + "\n".join(problems)
+                            )
                         else:
-                            heart_diagnosis = 'The person does not have heart disease'
-                            log_prediction('Heart Disease', heart_diagnosis, 'Low')
+                            heart_prediction = heart_disease_model.predict([user_input])
+                            heart_proba = heart_disease_model.predict_proba([user_input])[0][1]
+                            risk_pct = round(heart_proba * 100, 1)
+                            input_labels = [label for label, _, _ in range_specs]
+                            inputs_dict = dict(zip(input_labels, user_input))
 
-                        st.success(heart_diagnosis)
+                            if heart_prediction[0] == 1:
+                                heart_diagnosis = f'The person has a {risk_pct}% risk of Heart Disease (High Risk)'
+                                log_prediction('Heart Disease', heart_diagnosis, 'High', inputs_dict)
+                            else:
+                                heart_diagnosis = f'The person has a {risk_pct}% risk of Heart Disease (Low Risk)'
+                                log_prediction('Heart Disease', heart_diagnosis, 'Low', inputs_dict)
+
+                            st.success(heart_diagnosis)
+                            st.progress(heart_proba)
                     except ValueError:
                         st.error('Please enter valid numeric values in all fields.')
 
@@ -478,15 +775,161 @@ if selected == 'Disease Prediction':
                 else:
                     try:
                         user_input = [float(x) for x in user_input]
-                        parkinsons_prediction = parkinsons_model.predict([user_input])
 
-                        if parkinsons_prediction[0] == 1:
-                            parkinsons_diagnosis = "The person has Parkinson's disease"
-                            log_prediction('Parkinsons', parkinsons_diagnosis, 'High')
+                        range_specs = [
+                            ("MDVP:Fo(Hz)", 60, 320),
+                            ("MDVP:Fhi(Hz)", 80, 650),
+                            ("MDVP:Flo(Hz)", 50, 260),
+                            ("MDVP:Jitter(%)", 0.0005, 0.05),
+                            ("MDVP:Jitter(Abs)", 0.000005, 0.0005),
+                            ("MDVP:RAP", 0.0002, 0.03),
+                            ("MDVP:PPQ", 0.0002, 0.03),
+                            ("Jitter:DDP", 0.0005, 0.09),
+                            ("MDVP:Shimmer", 0.003, 0.16),
+                            ("MDVP:Shimmer(dB)", 0.03, 1.6),
+                            ("Shimmer:APQ3", 0.001, 0.08),
+                            ("Shimmer:APQ5", 0.001, 0.10),
+                            ("MDVP:APQ", 0.002, 0.18),
+                            ("Shimmer:DDA", 0.005, 0.20),
+                            ("NHR", 0.0001, 0.40),
+                            ("HNR", 5, 38),
+                            ("RPDE", 0.15, 0.75),
+                            ("DFA", 0.40, 0.90),
+                            ("spread1", -9, -1.5),
+                            ("spread2", 0, 0.60),
+                            ("D2", 1.0, 4.2),
+                            ("PPE", 0.02, 0.65),
+                        ]
+                        problems = check_ranges(user_input, range_specs)
+
+                        if problems:
+                            st.warning(
+                                "Some values look unusual — please double-check "
+                                "before predicting:\n" + "\n".join(problems)
+                            )
                         else:
-                            parkinsons_diagnosis = "The person does not have Parkinson's disease"
-                            log_prediction('Parkinsons', parkinsons_diagnosis, 'Low')
+                            parkinsons_prediction = parkinsons_model.predict([user_input])
+                            input_labels = [label for label, _, _ in range_specs]
+                            inputs_dict = dict(zip(input_labels, user_input))
 
-                        st.success(parkinsons_diagnosis)
+                            if parkinsons_prediction[0] == 1:
+                                parkinsons_diagnosis = "The person has Parkinson's disease"
+                                log_prediction('Parkinsons', parkinsons_diagnosis, 'High', inputs_dict)
+                            else:
+                                parkinsons_diagnosis = "The person does not have Parkinson's disease"
+                                log_prediction('Parkinsons', parkinsons_diagnosis, 'Low', inputs_dict)
+
+                            st.success(parkinsons_diagnosis)
                     except ValueError:
                         st.error('Please enter valid numeric values in all fields.')
+
+
+# ---------------------------------------------------------------------
+# Previous Records Page
+# ---------------------------------------------------------------------
+if selected == 'Previous Records':
+
+    st.title('Previous Records')
+    st.write("Your full prediction history, saved to your account so it's here even after you log out.")
+
+    records = get_user_predictions(st.session_state.user_id)
+
+    if not records:
+        st.info("No predictions yet. Head to **Disease Prediction** to run your first test.")
+    else:
+        # Flatten each record: the prediction summary plus every clinical
+        # input that was entered for it (BMI, Glucose, Pregnancies... for
+        # Diabetes; age, cp, chol... for Heart Disease; fo, jitter... for
+        # Parkinson's). Different diseases have different parameters, so
+        # columns that don't apply to a given row are simply left blank.
+        flat_rows = []
+        for r in records:
+            row = {
+                'Condition': r['condition'],
+                'Result': r['result'],
+                'Risk': r['risk'],
+                'Date & Time': r['timestamp'],
+            }
+            row.update(r['inputs'])
+            flat_rows.append(row)
+
+        df_full = pd.DataFrame(flat_rows)
+        summary_cols = ['Condition', 'Result', 'Risk', 'Date & Time']
+
+        col1, col2 = st.columns(2)
+        with col1:
+            condition_filter = st.multiselect(
+                'Filter by condition',
+                options=sorted(df_full['Condition'].unique()),
+                default=sorted(df_full['Condition'].unique()),
+            )
+        with col2:
+            risk_filter = st.multiselect(
+                'Filter by risk level',
+                options=sorted(df_full['Risk'].unique()),
+                default=sorted(df_full['Risk'].unique()),
+            )
+
+        filtered = df_full[
+            df_full['Condition'].isin(condition_filter)
+            & df_full['Risk'].isin(risk_filter)
+        ]
+
+        show_inputs = st.checkbox(
+            'Show all input parameters in the table (BMI, Glucose, Pregnancies, etc.)'
+        )
+
+        st.markdown(f"**{len(filtered)}** record(s) found.")
+
+        st.dataframe(
+            filtered if show_inputs else filtered[summary_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.download_button(
+            '⬇️ Download full history as CSV (includes all input parameters)',
+            data=filtered.to_csv(index=False),
+            file_name='prediction_history_full.csv',
+            mime='text/csv',
+        )
+
+        st.markdown('---')
+        with st.expander('⚠️ Danger zone'):
+            st.warning('This permanently deletes all of your saved prediction history. This cannot be undone.')
+            if st.button('Clear all my records'):
+                clear_user_predictions(st.session_state.user_id)
+                st.session_state.history = []
+                st.success('Your prediction history has been cleared.')
+                st.rerun()
+
+
+# ---------------------------------------------------------------------
+# AI Chatbot Page
+# ---------------------------------------------------------------------
+if selected == 'AI Chatbot':
+    render_ai_assistant_page()
+
+
+# ---------------------------------------------------------------------
+# Find a Specialist Page
+# ---------------------------------------------------------------------
+if selected == 'Find a Specialist':
+    st.title('Find a Specialist')
+    st.write(
+        "If a prediction came back **High Risk**, it's a good idea to "
+        "follow up with the right kind of doctor. Here's a quick guide:"
+    )
+
+    specialists = {
+        'Diabetes': 'Endocrinologist',
+        'Heart Disease': 'Cardiologist',
+        'Parkinsons': 'Neurologist',
+    }
+    for condition, specialist in specialists.items():
+        st.markdown(f"- **{condition}** → {specialist}")
+
+    st.info(
+        "This is a placeholder page — plug in a real directory, clinic "
+        "locator API, or contact list here when you're ready."
+    )

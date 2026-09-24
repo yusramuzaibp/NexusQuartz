@@ -1,0 +1,4 @@
+
+# User database (contains hashed passwords - never commit real user data)
+*.db
+users.db

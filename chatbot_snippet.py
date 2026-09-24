@@ -1,11 +1,41 @@
 # =======================================================================
-# AI HEALTH ASSISTANT — keyword-based chatbot
+# AI HEALTH ASSISTANT — real LLM (Google Gemini) with keyword-bot fallback
 # Paste this whole block into your project file, then add
 # 'AI Health Assistant' to your sidebar option_menu list (see note
 # at the bottom of this file for that one-line change).
 # =======================================================================
 
 import streamlit as st
+
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
+
+SYSTEM_PROMPT = (
+    "You are a helpful AI Health Assistant embedded in a Multiple Disease "
+    "Prediction app that covers diabetes, heart disease, and Parkinson's "
+    "disease. Answer clearly, in plain language, in under 150 words unless "
+    "the user asks for more detail. You are NOT a doctor and this is NOT a "
+    "diagnostic tool — always remind the user to consult a licensed "
+    "healthcare professional for anything specific to their own symptoms, "
+    "test results, or medical decisions. If the user asks about their own "
+    "prediction history, use the CONTEXT block provided, if any."
+)
+
+
+def _get_client():
+    """Returns a Gemini client if a key is configured, else None."""
+    if genai is None:
+        return None
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        return None
+    if not api_key:
+        return None
+    return genai.Client(api_key=api_key)
 
 
 # -----------------------------------------------------------------------
@@ -32,6 +62,32 @@ def bot_reply(question, history=None):
             for h in history[-5:]
         )
         return f"Here's your recent history:\n{lines}"
+
+    # ---- symptoms (checked BEFORE general disease info, so a symptom
+    #      question gets a symptom answer, not the general blurb) ----
+    if 'symptom' in q or 'sign' in q or 'warning sign' in q:
+        if 'diabetes' in q or 'blood sugar' in q or 'glucose' in q:
+            return ("Common symptoms of diabetes include: frequent urination, "
+                    "excessive thirst, unexplained weight loss, extreme "
+                    "hunger, fatigue, blurred vision, slow-healing sores, and "
+                    "tingling/numbness in hands or feet. If you notice "
+                    "several of these, it's worth getting tested.")
+        if 'heart' in q or 'cardiac' in q or 'cardiovascular' in q:
+            return ("Common symptoms of heart disease include: chest pain or "
+                    "discomfort, shortness of breath, pain/numbness in the "
+                    "arms or shoulder, irregular heartbeat, fatigue, "
+                    "dizziness, and swelling in the legs or feet. Chest pain "
+                    "with shortness of breath needs urgent medical attention.")
+        if 'parkinson' in q:
+            return ("Common early symptoms of Parkinson's disease include: "
+                    "tremor (often starting in one hand), muscle stiffness, "
+                    "slowed movement, changes in handwriting, reduced "
+                    "facial expression, and a softer or slurred voice. "
+                    "Symptoms usually develop gradually over time.")
+        # symptom question but no disease named
+        return ("Which condition are you asking about — diabetes, heart "
+                "disease, or Parkinson's? I can list the common symptoms "
+                "for any of the three.")
 
     # ---- general health knowledge keywords ----
     if 'blood pressure' in q or 'hypertension' in q:
@@ -99,12 +155,65 @@ def bot_reply(question, history=None):
 
 
 # -----------------------------------------------------------------------
+# 1b. REAL AI REPLY (Claude API), with automatic fallback to the
+#     keyword bot above if no API key is set or the request fails.
+# -----------------------------------------------------------------------
+def bot_reply_ai(question, history=None, chat_messages=None):
+    client = _get_client()
+    if client is None:
+        # No key configured yet -- use the keyword bot so the app
+        # still works while you're setting up your API key.
+        return bot_reply(question, history)
+
+    # Give the model a little context about the user's own predictions,
+    # if any exist, so it can answer things like "what was my latest result?"
+    context_note = ""
+    if history:
+        recent = history[-3:]
+        lines = "\n".join(
+            f"- {h['timestamp']}: {h['condition']} — {h['risk']} Risk ({h['result']})"
+            for h in recent
+        )
+        context_note = f"\n\nCONTEXT (user's recent predictions in this app):\n{lines}"
+
+    # Include a little recent chat history so follow-up questions make sense
+    transcript = ""
+    if chat_messages:
+        for m in chat_messages[-6:]:
+            if m["role"] in ("user", "assistant"):
+                speaker = "User" if m["role"] == "user" else "Assistant"
+                transcript += f"{speaker}: {m['content']}\n"
+
+    full_prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"{transcript}"
+        f"{context_note}\n\n"
+        f"User: {question}"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",  # fast + free-tier friendly
+            contents=full_prompt,
+        )
+        return response.text
+    except Exception:
+        # API hiccup (rate limit, network, bad key, etc.) -- degrade
+        # gracefully instead of crashing the app.
+        fallback = bot_reply(question, history)
+        return f"{fallback}\n\n_(AI service temporarily unavailable — showing basic info instead.)_"
+
+
+# -----------------------------------------------------------------------
 # 2. THE CHAT PAGE UI
 #    Paste this under: if selected == 'AI Health Assistant':
 # -----------------------------------------------------------------------
 def render_ai_assistant_page():
     st.title('AI Health Assistant')
-    st.caption('🟢 Online · Ask me about your results or general health topics')
+    if _get_client() is not None:
+        st.caption('🟢 Online · Powered by Gemini · Ask me anything about your results or general health topics')
+    else:
+        st.caption('🟡 Basic mode (no API key set) · Ask about your results or general health topics')
 
     history = st.session_state.get('history', [])
 
@@ -144,7 +253,7 @@ def render_ai_assistant_page():
         with st.chat_message('user'):
             st.markdown(user_prompt)
 
-        reply = bot_reply(user_prompt, history)
+        reply = bot_reply_ai(user_prompt, history, st.session_state.chat_messages)
 
         with st.chat_message('assistant'):
             st.markdown(reply)
