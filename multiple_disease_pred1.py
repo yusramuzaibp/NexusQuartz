@@ -13,11 +13,11 @@ from database.database import (
     create_database,
     save_prediction_to_db,
     get_user_predictions,
-    clear_user_predictions,
-    hash_password,
-    create_user,
-    login_user
+    clear_user_predictions
+   
 )
+from auth.authentication import hash_password, create_user, login_user
+
 
 # ---------------------------------------------------------------------
 # page config -- must be the very first Streamlit command in the file
