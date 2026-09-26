@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import hashlib
-import pandas as pd
 
 DB_NAME = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
