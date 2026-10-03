@@ -1,11 +1,12 @@
-# -*- coding: utf-8 -*-
 import os
 import pickle
 from datetime import datetime
 
 import pandas as pd
+from NexusQuartz import dashboard
 import streamlit as st
-from streamlit_option_menu import option_menu
+from streamlit_option_menu import option_menu 
+from pages.doctor_dashboard import show_doctor_dashboard
 
 from chatbot_snippet import bot_reply, render_ai_assistant_page
 
