@@ -3,10 +3,8 @@ import pickle
 from datetime import datetime
 
 import pandas as pd
-from NexusQuartz import dashboard
 import streamlit as st
 from streamlit_option_menu import option_menu 
-from pages.doctor_dashboard import show_doctor_dashboard
 
 from chatbot_snippet import bot_reply, render_ai_assistant_page
 
@@ -40,6 +38,8 @@ if "user_name" not in st.session_state:
     st.session_state.user_name = ""
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
+if "user_role" not in st.session_state:
+    st.session_state.user_role = ""
 
 if not st.session_state.logged_in:
 
@@ -147,23 +147,24 @@ def log_prediction(condition, result, risk, inputs=None):
 # ---------------------------------------------------------------------
 with st.sidebar:
     st.markdown(f"### 👋 Welcome, **{st.session_state.user_name}**")
+
     if st.button("🚪 Logout", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user_name = ""
-        st.session_state.user_id = None
-        st.rerun()
+     st.session_state.logged_in = False
+     st.session_state.user_name = ""
+     st.session_state.user_id = None
+     st.rerun()
     st.divider()
 
     selected = option_menu('Multiple Disease Prediction System',
-                            ['Dashboard',
-                             'Disease Prediction',
-                             'Previous Records',
-                             'AI Chatbot',
-                             'Find a Specialist'],
-                            icons=['speedometer2', 'clipboard2-pulse',
-                                   'clock-history', 'chat-dots', 'geo-alt'],
-                            default_index=0)
-
+                        ['Dashboard',
+                         'Disease Prediction',
+                         'Previous Records',
+                         'AI Chatbot',
+                         'Find a Specialist'],
+                        icons=['speedometer2', 'clipboard2-pulse',
+                               'clock-history', 'chat-dots', 'geo-alt'],
+                        default_index=0)
+    
 # Dashboard
 if selected == 'Dashboard':
     show_dashboard()
