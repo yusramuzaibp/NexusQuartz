@@ -339,9 +339,9 @@ if selected == 'Disease Prediction':
                 age = st.text_input('age', placeholder='54', label_visibility='collapsed')
 
             with col2:
-                st.markdown('**Sex**')
+                st.markdown('**Gender**')
                 st.caption('1 = male, 0 = female')
-                sex = st.text_input('sex', placeholder='1', label_visibility='collapsed')
+                gender = st.text_input('gender', placeholder='1', label_visibility='collapsed')
 
             with col1:
                 st.markdown('**Chest Pain Type**')
@@ -397,7 +397,7 @@ if selected == 'Disease Prediction':
             heart_diagnosis = ''
 
             if st.button('Heart Disease Test Result'):
-                user_input = [age, sex, cp, trestbps, chol, fbs, restecg,
+                user_input = [age, gender, cp, trestbps, chol, fbs, restecg,
                               thalach, exang, oldpeak, slope, ca, thal]
 
                 if '' in user_input:
@@ -408,7 +408,7 @@ if selected == 'Disease Prediction':
 
                         range_specs = [
                             ("Age", 1, 120),
-                            ("Sex", 0, 1),
+                            ("Gender", 0, 1),
                             ("Chest Pain Type", 0, 3),
                             ("Resting Blood Pressure", 60, 250),
                             ("Cholesterol", 100, 600),
