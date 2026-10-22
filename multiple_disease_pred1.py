@@ -13,12 +13,24 @@ from database.database import (
     create_database,
     save_prediction_to_db,
     get_user_predictions,
-    clear_user_predictions
-   
+    clear_user_predictions,
+    get_all_users,
+    get_all_predictions,
+    create_patient,
+    get_patients
 )
+
 from auth.authentication import hash_password, create_user, login_user
 from utils.validation import check_ranges
 from dashboard import show_dashboard
+
+from utils.pdf_generator import generate_pdf
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
 # ---------------------------------------------------------------------
 # page config -- must be the very first Streamlit command in the file
 # ---------------------------------------------------------------------
@@ -69,6 +81,7 @@ if not st.session_state.logged_in:
                     st.session_state.logged_in = True
                     st.session_state.user_id = user[0]
                     st.session_state.user_name = user[1]
+                    st.session_state.user_role = user[3]
                     st.session_state.history = get_user_predictions(user[0])
                     st.success("✅ Login successful!")
                     st.rerun()
@@ -126,20 +139,32 @@ if 'history' not in st.session_state:
     st.session_state.history = []  # each entry: {condition, result, risk, timestamp}
 
 
+
 def log_prediction(condition, result, risk, inputs=None):
     inputs = inputs or {}
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    patient_id = st.session_state.get("selected_patient_id")
+
     st.session_state.history.append({
         'condition': condition,
         'result': result,
-        'risk': risk,               # 'Low' or 'High'
+        'risk': risk,
         'timestamp': timestamp,
         'inputs': inputs,
+        'patient_id': patient_id,
     })
-    # Persist so this shows up under "Previous Records" -- including every
-    # parameter the user typed in -- even after logging out / restarting
-    # the app, not just for this session.
-    save_prediction_to_db(st.session_state.user_id, condition, result, risk, timestamp, inputs)
+
+    save_prediction_to_db(
+        st.session_state.user_id,
+        condition,
+        result,
+        risk,
+        timestamp,
+        inputs,
+        patient_id=patient_id,
+    )
+
 
 # ---------------------------------------------------------------------
 # sidebar for navigation
@@ -153,15 +178,156 @@ with st.sidebar:
         st.rerun()
     st.divider()
 
-    selected = option_menu('Multiple Disease Prediction System',
-                            ['Dashboard',
-                             'Disease Prediction',
-                             'Previous Records',
-                             'AI Chatbot',
-                             'Find a Specialist'],
-                            icons=['speedometer2', 'clipboard2-pulse',
-                                   'clock-history', 'chat-dots', 'geo-alt'],
-                            default_index=0)
+
+    # Role-based navigation menu
+    user_role = st.session_state.get("user_role", "user")
+
+    if user_role == "admin":
+        selected = option_menu(
+            "Admin Panel",
+            [
+                "Admin Dashboard",
+                "Manage Users",
+                "All Prediction Records",
+            ],
+            icons=[
+                "speedometer2",
+                "people",
+                "clipboard-data",
+            ],
+            default_index=0,
+        )
+    else:
+        selected = option_menu(
+            "Multiple Disease Prediction System",
+            [
+                "Dashboard",
+                "Patient Management",
+                "Disease Prediction",
+                "Previous Records",
+                "AI Chatbot",
+                "Find a Specialist",
+            ],
+            icons=[
+                "speedometer2",
+                "person-vcard",
+                "clipboard2-pulse",
+                "clock-history",
+                "chat-dots",
+                "geo-alt",
+            ],
+            default_index=0,
+        )
+
+# ---------------------------------------------------------------------
+# Admin pages
+# ---------------------------------------------------------------------
+if selected == "Admin Dashboard":
+    st.title("🛡️ Admin Dashboard")
+    st.write("Welcome to the system administration panel.")
+    st.info("User management and prediction record management will be added here.")
+
+elif selected == "Manage Users":
+    st.title("👥 Manage Users")
+    st.write("View all registered accounts in the system.")
+
+    users = get_all_users()
+
+    if users:
+        users_df = pd.DataFrame(users)
+
+        st.metric("Total Registered Accounts", len(users))
+
+        st.dataframe(
+            users_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        csv_data = users_df.to_csv(index=False)
+
+        st.download_button(
+            "⬇️ Download User List",
+            data=csv_data,
+            file_name="registered_users.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("No registered accounts found.")
+
+elif selected == "All Prediction Records":
+    st.title("📋 All Prediction Records")
+    st.write("View prediction records from all registered users.")
+
+    predictions = get_all_predictions()
+
+    if predictions:
+        predictions_df = pd.DataFrame(predictions)
+
+        st.metric("Total Predictions", len(predictions))
+
+        st.dataframe(
+            predictions_df,
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No prediction records found.")
+
+if selected == "Patient Management":
+    st.title("👥 Patient Management")
+    st.write("Register new patients or view existing patients.")
+
+    patients = get_patients(st.session_state.user_id)
+
+    st.subheader("Register a New Patient")
+
+    with st.form("register_patient_form"):
+        patient_code = st.text_input("Patient Code")
+        patient_name = st.text_input("Patient Name")
+        patient_age = st.number_input(
+            "Age", min_value=1, max_value=120, value=18
+        )
+        patient_gender = st.selectbox(
+            "Gender",
+            ["Male", "Female", "Non-binary", "Prefer not to say"]
+        )
+
+        register_clicked = st.form_submit_button("Register Patient")
+
+        if register_clicked:
+            if not patient_code.strip() or not patient_name.strip():
+                st.error("Please enter both patient code and patient name.")
+            else:
+                success, message = create_patient(
+                    doctor_id=st.session_state.user_id,
+                    patient_code=patient_code,
+                    name=patient_name,
+                    age=int(patient_age),
+                    sex=patient_gender,
+                )
+
+                if success:
+                    st.success(message)
+                    st.rerun()
+                else:
+                    st.error(message)
+
+    st.divider()
+    st.subheader("Existing Patients")
+
+    patients = get_patients(st.session_state.user_id)
+
+    if patients:
+        patients_df = pd.DataFrame(patients)
+        st.dataframe(
+            patients_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No patients registered yet.")
+
 
 # Dashboard
 if selected == 'Dashboard':
@@ -254,23 +420,23 @@ if selected == 'Disease Prediction':
                 Pregnancies = st.text_input('Pregnancies', placeholder='0', label_visibility='collapsed')
 
             with col2:
-                st.markdown('**Plasma Glucose (2h OGTT)** (mg/dL)')
+                st.markdown('**Glucose Level**')
                 Glucose = st.text_input('Glucose', placeholder='120', label_visibility='collapsed')
 
             with col1:
-                st.markdown('**Diastolic Blood Pressure** (mmHg)')
+                st.markdown('**Blood Pressure value**')
                 BloodPressure = st.text_input('BloodPressure', placeholder='72', label_visibility='collapsed')
 
             with col2:
-                st.markdown('**Triceps Skin Fold Thickness** (mm)')
+                st.markdown('**Skin Thickness value**')
                 SkinThickness = st.text_input('SkinThickness', placeholder='20', label_visibility='collapsed')
 
             with col1:
-                st.markdown('**2-Hour Serum Insulin** (μU/mL)')
+                st.markdown('**Insulin Level**')
                 Insulin = st.text_input('Insulin', placeholder='80', label_visibility='collapsed')
 
             with col2:
-                st.markdown('**Body Mass Index (BMI)** (kg/m²)')
+                st.markdown('**BMI value**')
                 BMI = st.text_input('BMI', placeholder='25.0', label_visibility='collapsed')
 
             with col1:
@@ -312,18 +478,27 @@ if selected == 'Disease Prediction':
                                 "before predicting:\n" + "\n".join(problems)
                             )
                         else:
+                            
                             diab_prediction = diabetes_model.predict([user_input])
                             input_labels = [label for label, _, _ in range_specs]
                             inputs_dict = dict(zip(input_labels, user_input))
 
-                            if diab_prediction[0] == 1:
-                                diab_diagnosis = 'The person is Diabetic'
-                                log_prediction('Diabetes', diab_diagnosis, 'High', inputs_dict)
-                            else:
-                                diab_diagnosis = 'The person is Not Diabetic'
-                                log_prediction('Diabetes', diab_diagnosis, 'Low', inputs_dict)
+                            risk_pct = None
+                            if hasattr(diabetes_model, 'predict_proba'):
+                                risk_pct = round(diabetes_model.predict_proba([user_input])[0][1] * 100, 1)
 
+                            is_diabetic = diab_prediction[0] == 1
+                            verdict = 'Diabetic' if is_diabetic else 'Not Diabetic'
+                            diab_diagnosis = f'The person is {verdict}'
+                            if risk_pct is not None:
+                                diab_diagnosis += f' ({risk_pct}% estimated risk)'
+
+                            log_prediction('Diabetes', diab_diagnosis, 'High' if is_diabetic else 'Low', inputs_dict)
                             st.success(diab_diagnosis)
+                            if risk_pct is not None:
+                                st.progress(risk_pct / 100)
+
+                            
                     except ValueError:
                         st.error('Please enter valid numeric values in all fields.')
 
@@ -383,6 +558,7 @@ if selected == 'Disease Prediction':
                 st.markdown('**Slope of Peak Exercise ST**')
                 st.caption('0–2 scale')
                 slope = st.text_input('slope', placeholder='1', label_visibility='collapsed')
+             
 
             with col2:
                 st.markdown('**Major Vessels Colored (Fluoroscopy)**')
@@ -418,8 +594,8 @@ if selected == 'Disease Prediction':
                             ("Exercise Induced Angina", 0, 1),
                             ("ST Depression", 0, 10),
                             ("Slope", 0, 2),
-                            ("Major Vessels (ca)", 0, 3),
-                            ("Thalassemia", 1, 3),
+                            ("Major Vessels (ca)", 0, 4),
+                            ("Thalassemia", 0, 3),
                         ]
                         problems = check_ranges(user_input, range_specs)
 
@@ -596,18 +772,27 @@ if selected == 'Disease Prediction':
                                 "before predicting:\n" + "\n".join(problems)
                             )
                         else:
+
                             parkinsons_prediction = parkinsons_model.predict([user_input])
                             input_labels = [label for label, _, _ in range_specs]
                             inputs_dict = dict(zip(input_labels, user_input))
 
-                            if parkinsons_prediction[0] == 1:
-                                parkinsons_diagnosis = "The person has Parkinson's disease"
-                                log_prediction('Parkinsons', parkinsons_diagnosis, 'High', inputs_dict)
-                            else:
-                                parkinsons_diagnosis = "The person does not have Parkinson's disease"
-                                log_prediction('Parkinsons', parkinsons_diagnosis, 'Low', inputs_dict)
+                            risk_pct = None
+                            if hasattr(parkinsons_model, 'predict_proba'):
+                                risk_pct = round(parkinsons_model.predict_proba([user_input])[0][1] * 100, 1)
 
+                            has_pd = parkinsons_prediction[0] == 1
+                            parkinsons_diagnosis = ("The person has Parkinson's disease" if has_pd
+                                                    else "The person does not have Parkinson's disease")
+                            if risk_pct is not None:
+                                parkinsons_diagnosis += f' ({risk_pct}% estimated risk)'
+
+                            log_prediction('Parkinsons', parkinsons_diagnosis, 'High' if has_pd else 'Low', inputs_dict)
                             st.success(parkinsons_diagnosis)
+                            if risk_pct is not None:
+                                st.progress(risk_pct / 100)
+                    
+                    
                     except ValueError:
                         st.error('Please enter valid numeric values in all fields.')
 
@@ -680,6 +865,16 @@ if selected == 'Previous Records':
             data=filtered.to_csv(index=False),
             file_name='prediction_history_full.csv',
             mime='text/csv',
+        )
+        
+        st.download_button(
+            '⬇️ Download prediction history as PDF',
+            data=generate_pdf(
+                filtered.to_dict(orient='records'),
+                'My Prediction History'
+            ),
+            file_name='prediction_history.pdf',
+            mime='application/pdf',
         )
 
         st.markdown('---')
