@@ -40,15 +40,23 @@ def create_database():
 
 
 def save_prediction_to_db(
-    user_id, condition, result, risk, timestamp, inputs
+    user_id, condition, result, risk, timestamp, inputs, patient_id=None
 ):
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO predictions
-                (user_id, condition_name, result, risk, timestamp, inputs_json)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (
+                    user_id,
+                    condition_name,
+                    result,
+                    risk,
+                    timestamp,
+                    inputs_json,
+                    patient_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     user_id,
@@ -57,10 +65,10 @@ def save_prediction_to_db(
                     risk,
                     timestamp,
                     json.dumps(inputs),
+                    patient_id,
                 ),
             )
-
-
+            
 def get_user_predictions(user_id):
     with get_connection() as conn:
         with conn.cursor() as cursor:
