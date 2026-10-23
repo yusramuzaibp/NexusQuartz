@@ -23,6 +23,8 @@ from database.database import (
 from auth.authentication import hash_password, create_user, login_user
 from utils.validation import check_ranges
 from dashboard import show_dashboard
+from patient_management import render_patient_management
+from patient_profile import render_patient_profile
 
 from utils.pdf_generator import generate_pdf
 from io import BytesIO
@@ -197,27 +199,37 @@ with st.sidebar:
             ],
             default_index=0,
         )
+    
+    
     else:
+        menu_items = [
+            "Dashboard",
+            "Disease Prediction",
+            "Previous Records",
+            "AI Chatbot",
+            "Find a Specialist",
+        ]
+
+        default_page = st.session_state.get("page", "Dashboard")
+
+        if default_page not in menu_items:
+            default_page = "Dashboard"
+
         selected = option_menu(
             "Multiple Disease Prediction System",
-            [
-                "Dashboard",
-                "Patient Management",
-                "Disease Prediction",
-                "Previous Records",
-                "AI Chatbot",
-                "Find a Specialist",
-            ],
+            menu_items,
             icons=[
                 "speedometer2",
-                "person-vcard",
                 "clipboard2-pulse",
                 "clock-history",
                 "chat-dots",
                 "geo-alt",
             ],
-            default_index=0,
+            default_index=menu_items.index(default_page),
+            key="user_navigation",
         )
+
+        st.session_state.page = selected
 
 # ---------------------------------------------------------------------
 # Admin pages
@@ -275,58 +287,10 @@ elif selected == "All Prediction Records":
         st.info("No prediction records found.")
 
 if selected == "Patient Management":
-    st.title("👥 Patient Management")
-    st.write("Register new patients or view existing patients.")
+    render_patient_management()
 
-    patients = get_patients(st.session_state.user_id)
-
-    st.subheader("Register a New Patient")
-
-    with st.form("register_patient_form"):
-        patient_code = st.text_input("Patient Code")
-        patient_name = st.text_input("Patient Name")
-        patient_age = st.number_input(
-            "Age", min_value=1, max_value=120, value=18
-        )
-        patient_gender = st.selectbox(
-            "Gender",
-            ["Male", "Female", "Non-binary", "Prefer not to say"]
-        )
-
-        register_clicked = st.form_submit_button("Register Patient")
-
-        if register_clicked:
-            if not patient_code.strip() or not patient_name.strip():
-                st.error("Please enter both patient code and patient name.")
-            else:
-                success, message = create_patient(
-                    doctor_id=st.session_state.user_id,
-                    patient_code=patient_code,
-                    name=patient_name,
-                    age=int(patient_age),
-                    sex=patient_gender,
-                )
-
-                if success:
-                    st.success(message)
-                    st.rerun()
-                else:
-                    st.error(message)
-
-    st.divider()
-    st.subheader("Existing Patients")
-
-    patients = get_patients(st.session_state.user_id)
-
-    if patients:
-        patients_df = pd.DataFrame(patients)
-        st.dataframe(
-            patients_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.info("No patients registered yet.")
+if selected == "Patient Profile":
+    render_patient_profile()
 
 
 # Dashboard
