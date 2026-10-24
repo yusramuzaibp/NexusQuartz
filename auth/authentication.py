@@ -1,13 +1,19 @@
 
-import os
-import sqlite3
 import hashlib
+import os
+import psycopg
+from dotenv import load_dotenv
 
-DB_NAME = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "database",
-    "users.db"
-)
+load_dotenv()
+
+
+def get_auth_connection():
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is missing from .env")
+
+    return psycopg.connect(database_url)
 
 
 def hash_password(password):
@@ -15,41 +21,36 @@ def hash_password(password):
 
 
 def create_user(name, email, password):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
     try:
-        cursor.execute(
-            """
-            INSERT INTO users (name, email, password, role)
-            VALUES (?, ?, ?, 'user')
-            """,
-            (name, email, hash_password(password)),
-        )
-        conn.commit()
-        return True
+        with get_auth_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO public.users
+                        (name, email, password, role)
+                    VALUES (%s, %s, %s, 'user')
+                    ON CONFLICT (email) DO NOTHING
+                    RETURNING id
+                    """,
+                    (name, email, hash_password(password)),
+                )
 
-    except sqlite3.IntegrityError:
-        return False
+                return cursor.fetchone() is not None
 
-    finally:
-        conn.close()
+    except psycopg.Error:
+        raise
 
 
 def login_user(email, password):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    with get_auth_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, email, role
+                FROM public.users
+                WHERE email = %s AND password = %s
+                """,
+                (email, hash_password(password)),
+            )
 
-    try:
-        cursor.execute(
-            """
-            SELECT id, name, email, role
-            FROM users
-            WHERE email = ? AND password = ?
-            """,
-            (email, hash_password(password)),
-        )
-        return cursor.fetchone()
-
-    finally:
-        conn.close()
+            return cursor.fetchone()

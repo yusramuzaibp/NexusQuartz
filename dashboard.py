@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-
+from database.database import get_user_predictions
 
 def show_dashboard():
     st.title('Dashboard')
     st.write("Here's an overview of your recent prediction activity.")
 
-    history = st.session_state.history
+    history = get_user_predictions(st.session_state.user_id)
     df = pd.DataFrame(history)
 
     total = len(history)

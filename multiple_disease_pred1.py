@@ -770,7 +770,7 @@ if selected == 'Previous Records':
     st.write("Your full prediction history, saved to your account so it's here even after you log out.")
 
     records = get_user_predictions(st.session_state.user_id)
-
+   
     if not records:
         st.info("No predictions yet. Head to **Disease Prediction** to run your first test.")
     else:

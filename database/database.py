@@ -187,3 +187,62 @@ def get_patients(doctor_id):
         }
         for row in rows
     ]
+
+def get_all_users():
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, name, email
+                FROM users
+                ORDER BY id
+            """)
+            rows = cursor.fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "name": row[1],
+            "email": row[2],
+        }
+        for row in rows
+    ]
+
+
+def get_all_predictions():
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    user_id,
+                    condition_name,
+                    result,
+                    risk,
+                    timestamp,
+                    inputs_json,
+                    patient_id
+                FROM predictions
+                ORDER BY timestamp DESC
+            """)
+            rows = cursor.fetchall()
+
+    records = []
+
+    for row in rows:
+        try:
+            inputs = json.loads(row[6]) if row[6] else {}
+        except (TypeError, ValueError):
+            inputs = {}
+
+        records.append({
+            "id": row[0],
+            "user_id": row[1],
+            "condition": row[2],
+            "result": row[3],
+            "risk": row[4],
+            "timestamp": row[5],
+            "inputs": inputs,
+            "patient_id": row[7],
+        })
+
+    return records
