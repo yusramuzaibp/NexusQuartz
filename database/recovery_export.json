@@ -1,0 +1,179 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "anya",
+      "email": "anya@gmail.com",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user"
+    },
+    {
+      "id": 2,
+      "name": "System Admin",
+      "email": "admin@mdp.local",
+      "password": "e4140086d04b62b252c3565d673c6e6e2a7f7e5e5e6ca1028cee19060305aa42",
+      "role": "admin"
+    },
+    {
+      "id": 3,
+      "name": "admin",
+      "email": "admin@mdp.login",
+      "password": "e4140086d04b62b252c3565d673c6e6e2a7f7e5e5e6ca1028cee19060305aa42",
+      "role": "user"
+    }
+  ],
+  "patients": [
+    {
+      "id": 1,
+      "doctor_id": 1,
+      "patient_code": "01",
+      "name": "tom",
+      "age": 50,
+      "sex": "Male",
+      "contact": "",
+      "created_at": "2026-10-22 13:39:20"
+    }
+  ],
+  "predictions": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Diabetic",
+      "risk": "High",
+      "timestamp": "2026-09-19 10:18:44",
+      "inputs_json": null,
+      "patient_id": null
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Diabetic",
+      "risk": "High",
+      "timestamp": "2026-09-20 12:07:32",
+      "inputs_json": "{\"Pregnancies\": 0.0, \"Glucose\": 300.0, \"Blood Pressure\": 73.0, \"Skin Thickness\": 55.0, \"Insulin\": 150.0, \"BMI\": 25.0, \"Diabetes Pedigree Function\": 0.47, \"Age\": 22.0}",
+      "patient_id": null
+    },
+    {
+      "id": 3,
+      "user_id": 1,
+      "condition_name": "Heart Disease",
+      "result": "The person has a 9.0% risk of Heart Disease (Low Risk)",
+      "risk": "Low",
+      "timestamp": "2026-09-20 12:08:52",
+      "inputs_json": "{\"Age\": 54.0, \"Sex\": 1.0, \"Chest Pain Type\": 0.0, \"Resting Blood Pressure\": 130.0, \"Cholesterol\": 245.0, \"Fasting Blood Sugar\": 1.0, \"Resting ECG\": 1.0, \"Max Heart Rate\": 150.0, \"Exercise Induced Angina\": 0.0, \"ST Depression\": 1.0, \"Slope\": 1.0, \"Major Vessels (ca)\": 3.0, \"Thalassemia\": 2.0}",
+      "patient_id": null
+    },
+    {
+      "id": 4,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Diabetic",
+      "risk": "High",
+      "timestamp": "2026-09-20 12:12:01",
+      "inputs_json": "{\"Pregnancies\": 20.0, \"Glucose\": 120.0, \"Blood Pressure\": 74.0, \"Skin Thickness\": 20.0, \"Insulin\": 80.0, \"BMI\": 25.0, \"Diabetes Pedigree Function\": 0.47, \"Age\": 70.0}",
+      "patient_id": null
+    },
+    {
+      "id": 5,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Diabetic",
+      "risk": "High",
+      "timestamp": "2026-09-24 23:35:49",
+      "inputs_json": "{\"Pregnancies\": 20.0, \"Glucose\": 120.0, \"Blood Pressure\": 74.0, \"Skin Thickness\": 20.0, \"Insulin\": 80.0, \"BMI\": 25.0, \"Diabetes Pedigree Function\": 0.47, \"Age\": 70.0}",
+      "patient_id": null
+    },
+    {
+      "id": 6,
+      "user_id": 1,
+      "condition_name": "Heart Disease",
+      "result": "The person has a 9.0% risk of Heart Disease (Low Risk)",
+      "risk": "Low",
+      "timestamp": "2026-09-24 23:36:11",
+      "inputs_json": "{\"Age\": 54.0, \"Sex\": 1.0, \"Chest Pain Type\": 0.0, \"Resting Blood Pressure\": 130.0, \"Cholesterol\": 245.0, \"Fasting Blood Sugar\": 1.0, \"Resting ECG\": 1.0, \"Max Heart Rate\": 150.0, \"Exercise Induced Angina\": 0.0, \"ST Depression\": 1.0, \"Slope\": 1.0, \"Major Vessels (ca)\": 3.0, \"Thalassemia\": 2.0}",
+      "patient_id": null
+    },
+    {
+      "id": 7,
+      "user_id": 1,
+      "condition_name": "Parkinsons",
+      "result": "The person has Parkinson's disease",
+      "risk": "High",
+      "timestamp": "2026-09-25 10:24:09",
+      "inputs_json": "{\"MDVP:Fo(Hz)\": 180.0, \"MDVP:Fhi(Hz)\": 220.0, \"MDVP:Flo(Hz)\": 120.0, \"MDVP:Jitter(%)\": 0.004, \"MDVP:Jitter(Abs)\": 3e-05, \"MDVP:RAP\": 0.002, \"MDVP:PPQ\": 0.002, \"Jitter:DDP\": 0.006, \"MDVP:Shimmer\": 0.03, \"MDVP:Shimmer(dB)\": 0.3, \"Shimmer:APQ3\": 0.015, \"Shimmer:APQ5\": 0.018, \"MDVP:APQ\": 0.02, \"Shimmer:DDA\": 0.045, \"NHR\": 0.01, \"HNR\": 22.0, \"RPDE\": 0.35, \"DFA\": 0.7, \"spread1\": -5.5, \"spread2\": 0.2, \"D2\": 2.0, \"PPE\": 0.1}",
+      "patient_id": null
+    },
+    {
+      "id": 8,
+      "user_id": 1,
+      "condition_name": "Parkinsons",
+      "result": "The person has Parkinson's disease",
+      "risk": "High",
+      "timestamp": "2026-09-25 10:25:17",
+      "inputs_json": "{\"MDVP:Fo(Hz)\": 180.0, \"MDVP:Fhi(Hz)\": 220.0, \"MDVP:Flo(Hz)\": 120.0, \"MDVP:Jitter(%)\": 0.004, \"MDVP:Jitter(Abs)\": 3e-05, \"MDVP:RAP\": 0.002, \"MDVP:PPQ\": 0.002, \"Jitter:DDP\": 0.006, \"MDVP:Shimmer\": 0.03, \"MDVP:Shimmer(dB)\": 0.3, \"Shimmer:APQ3\": 0.015, \"Shimmer:APQ5\": 0.018, \"MDVP:APQ\": 0.02, \"Shimmer:DDA\": 0.045, \"NHR\": 0.01, \"HNR\": 22.0, \"RPDE\": 0.35, \"DFA\": 0.7, \"spread1\": -5.5, \"spread2\": 0.2, \"D2\": 2.0, \"PPE\": 0.1}",
+      "patient_id": null
+    },
+    {
+      "id": 9,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Not Diabetic",
+      "risk": "Low",
+      "timestamp": "2026-10-16 16:22:34",
+      "inputs_json": "{\"Pregnancies\": 5.0, \"Glucose\": 120.0, \"Blood Pressure\": 74.0, \"Skin Thickness\": 20.0, \"Insulin\": 80.0, \"BMI\": 25.0, \"Diabetes Pedigree Function\": 0.47, \"Age\": 70.0}",
+      "patient_id": null
+    },
+    {
+      "id": 10,
+      "user_id": 1,
+      "condition_name": "Parkinsons",
+      "result": "The person has Parkinson's disease",
+      "risk": "High",
+      "timestamp": "2026-10-16 17:54:40",
+      "inputs_json": "{\"MDVP:Fo(Hz)\": 150.0, \"MDVP:Fhi(Hz)\": 180.0, \"MDVP:Flo(Hz)\": 110.0, \"MDVP:Jitter(%)\": 0.005, \"MDVP:Jitter(Abs)\": 3e-05, \"MDVP:RAP\": 0.003, \"MDVP:PPQ\": 0.003, \"Jitter:DDP\": 0.009, \"MDVP:Shimmer\": 0.03, \"MDVP:Shimmer(dB)\": 0.3, \"Shimmer:APQ3\": 0.015, \"Shimmer:APQ5\": 0.018, \"MDVP:APQ\": 0.024, \"Shimmer:DDA\": 0.045, \"NHR\": 0.02, \"HNR\": 21.0, \"RPDE\": 0.5, \"DFA\": 0.7, \"spread1\": -5.5, \"spread2\": 0.2, \"D2\": 2.3, \"PPE\": 0.2}",
+      "patient_id": null
+    },
+    {
+      "id": 11,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Not Diabetic (22.0% estimated risk)",
+      "risk": "Low",
+      "timestamp": "2026-10-20 14:49:15",
+      "inputs_json": "{\"Pregnancies\": 0.0, \"Glucose\": 120.0, \"Blood Pressure\": 52.0, \"Skin Thickness\": 20.0, \"Insulin\": 60.0, \"BMI\": 25.2, \"Diabetes Pedigree Function\": 0.8, \"Age\": 50.0}",
+      "patient_id": null
+    },
+    {
+      "id": 12,
+      "user_id": 1,
+      "condition_name": "Parkinsons",
+      "result": "The person does not have Parkinson's disease (9.3% estimated risk)",
+      "risk": "Low",
+      "timestamp": "2026-10-20 15:00:15",
+      "inputs_json": "{\"MDVP:Fo(Hz)\": 197.076, \"MDVP:Fhi(Hz)\": 206.896, \"MDVP:Flo(Hz)\": 192.055, \"MDVP:Jitter(%)\": 0.002, \"MDVP:Jitter(Abs)\": 1e-05, \"MDVP:RAP\": 0.00166, \"MDVP:PPQ\": 0.00168, \"Jitter:DDP\": 0.0098, \"MDVP:Shimmer\": 0.0109, \"MDVP:Shimmer(dB)\": 0.097, \"Shimmer:APQ3\": 0.00563, \"Shimmer:APQ5\": 0.0068, \"MDVP:APQ\": 0.00802, \"Shimmer:DDA\": 0.01689, \"NHR\": 0.00339, \"HNR\": 24.775, \"RPDE\": 0.5, \"DFA\": 0.7416, \"spread1\": -7.34, \"spread2\": 0.177, \"D2\": 1.74336, \"PPE\": 0.2}",
+      "patient_id": null
+    },
+    {
+      "id": 13,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Not Diabetic (14.4% estimated risk)",
+      "risk": "Low",
+      "timestamp": "2026-10-20 15:05:17",
+      "inputs_json": "{\"Pregnancies\": 0.0, \"Glucose\": 120.0, \"Blood Pressure\": 72.0, \"Skin Thickness\": 50.0, \"Insulin\": 80.0, \"BMI\": 25.0, \"Diabetes Pedigree Function\": 0.7, \"Age\": 35.0}",
+      "patient_id": null
+    },
+    {
+      "id": 14,
+      "user_id": 1,
+      "condition_name": "Diabetes",
+      "result": "The person is Not Diabetic (4.5% estimated risk)",
+      "risk": "Low",
+      "timestamp": "2026-10-22 19:10:15",
+      "inputs_json": "{\"Pregnancies\": 0.0, \"Glucose\": 88.0, \"Blood Pressure\": 75.0, \"Skin Thickness\": 20.0, \"Insulin\": 88.0, \"BMI\": 25.0, \"Diabetes Pedigree Function\": 0.56, \"Age\": 44.0}",
+      "patient_id": null
+    }
+  ]
+}
