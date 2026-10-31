@@ -23,8 +23,6 @@ from database.database import (
 from auth.authentication import hash_password, create_user, login_user
 from utils.validation import check_ranges
 from dashboard import show_dashboard
-from patient_management import render_patient_management
-from patient_profile import render_patient_profile
 
 from utils.pdf_generator import generate_pdf
 from io import BytesIO
@@ -33,20 +31,23 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
+def only_digits(key):
+    value = st.session_state.get(key, "")
+    st.session_state[key] = "".join(
+        ch for ch in value if ch.isdigit()
+    )
 # ---------------------------------------------------------------------
 # page config -- must be the very first Streamlit command in the file
 # ---------------------------------------------------------------------
 st.set_page_config(page_title="Multiple Disease Prediction", layout="wide", page_icon="🧑‍⚕️")
-
-
 # =======================================================================
-
-
 # LOGIN / SIGN UP
 # =======================================================================
+@st.cache_resource
+def initialize_database():
+    create_database()
 
-create_database()
-
+initialize_database()
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_name" not in st.session_state:
@@ -140,13 +141,17 @@ parkinsons_model = pickle.load(open(f'{working_dir}/saved_models/parkinsons_mode
 if 'history' not in st.session_state:
     st.session_state.history = []  # each entry: {condition, result, risk, timestamp}
 
-
-
 def log_prediction(condition, result, risk, inputs=None):
     inputs = inputs or {}
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     patient_id = st.session_state.get("selected_patient_id")
+    patient_details = st.session_state.get("patient_details", {})
+
+    inputs["Patient Name"] = patient_details.get("name", "")
+    inputs["Patient Age"] = patient_details.get("age", "")
+    inputs["Patient Gender"] = patient_details.get("gender", "")
+    inputs["Contact Number"] = patient_details.get("contact", "")
 
     st.session_state.history.append({
         'condition': condition,
@@ -166,8 +171,6 @@ def log_prediction(condition, result, risk, inputs=None):
         inputs,
         patient_id=patient_id,
     )
-
-
 # ---------------------------------------------------------------------
 # sidebar for navigation
 # ---------------------------------------------------------------------
@@ -214,6 +217,9 @@ with st.sidebar:
 
         if default_page not in menu_items:
             default_page = "Dashboard"
+        if st.session_state.get("navigate_to_disease", False):
+            st.session_state.user_navigation = "Disease Prediction"
+            st.session_state.navigate_to_disease = False
 
         selected = option_menu(
             "Multiple Disease Prediction System",
@@ -285,13 +291,6 @@ elif selected == "All Prediction Records":
         )
     else:
         st.info("No prediction records found.")
-
-if selected == "Patient Management":
-    render_patient_management()
-
-if selected == "Patient Profile":
-    render_patient_profile()
-
 
 # Dashboard
 if selected == 'Dashboard':
@@ -376,6 +375,40 @@ if selected == 'Disease Prediction':
         # ---------------------------------------------------------
         if disease_choice == 'Diabetes':
 
+            st.subheader("Patient Details")
+
+            patient_col1, patient_col2 = st.columns(2)
+
+            with patient_col1:
+                patient_name = st.text_input("Patient Name")
+                patient_age = st.number_input(
+                "Patient Age", min_value=1, max_value=120, value=None
+            )
+
+            with patient_col2:
+                patient_gender = st.selectbox(
+                "Gender", 
+                ["Select Gender","Male", "Female", "Other"]
+            )
+            patient_contact = st.text_input(
+                "Contact Number",
+                max_chars=10,
+                help="Enter a valid 10-digit contact number.",
+                key="diabetes_contact",
+                on_change=only_digits,
+                args=("diabetes_contact",)
+            )
+
+            st.divider()
+            st.subheader("Diabetes Health Parameters")
+
+            st.session_state.patient_details = {
+                "name": patient_name,
+                "age": patient_age,
+                "gender": patient_gender,
+                "contact": patient_contact,
+           }
+
             col1, col2 = st.columns(2)
 
             with col1:
@@ -409,8 +442,14 @@ if selected == 'Disease Prediction':
                 DiabetesPedigreeFunction = st.text_input('DPF', placeholder='0.47', label_visibility='collapsed')
 
             with col2:
-                st.markdown('**Age** (years)')
-                Age = st.text_input('Age', placeholder='35', label_visibility='collapsed')
+                st.markdown("**Age** (years)")
+                Age = str(patient_age) if patient_age is not None else ""
+                st.text_input(
+                    'Age',
+                    value=Age,
+                    disabled=True,
+                    label_visibility='collapsed'
+                ) 
 
             diab_diagnosis = ''
 
@@ -418,8 +457,15 @@ if selected == 'Disease Prediction':
                 user_input = [Pregnancies, Glucose, BloodPressure, SkinThickness,
                               Insulin, BMI, DiabetesPedigreeFunction, Age]
 
-                if '' in user_input:
-                    st.warning('Please fill in all fields before predicting.')
+                if (
+                    '' in user_input
+                    or not patient_name.strip()
+                    or patient_age is None
+                    or patient_gender == "Select Gender"
+                    or not patient_contact.strip()
+                    or len(patient_contact) != 10
+                ):
+                    st.warning("Please complete all patient details and health parameters.")
                 else:
                     try:
                         user_input = [float(x) for x in user_input]
@@ -470,17 +516,68 @@ if selected == 'Disease Prediction':
         # Heart Disease
         # ---------------------------------------------------------
         elif disease_choice == 'Heart Disease':
+            st.subheader("Patient Details")
+
+            patient_col1, patient_col2 = st.columns(2)
+
+            with patient_col1:
+                patient_name = st.text_input("Patient Name")
+                patient_age = st.number_input(
+                "Patient Age", min_value=1, max_value=120, value=None
+            )
+
+            with patient_col2:
+                patient_gender = st.selectbox(
+                "Gender", 
+                ["Select Gender", "Male", "Female", "Other"]
+            )
+            patient_contact = st.text_input(
+                "Contact Number",
+                max_chars=10,
+                help="Enter a valid 10-digit contact number.",
+                key="heart_contact",
+                on_change=only_digits,
+                args=("heart_contact",)                
+            )
+
+            st.divider()
+            st.subheader("Heart Disease Health Parameters")
+
+            st.session_state.patient_details = {
+                "name": patient_name,
+                "age": patient_age,
+                "gender": patient_gender,
+                "contact": patient_contact,
+           }
 
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown('**Age** (years)')
-                age = st.text_input('age', placeholder='54', label_visibility='collapsed')
+                st.markdown("**Age** (years)")
+                age = str(patient_age) if patient_age is not None else ""
+                st.text_input(
+                    'age',
+                    value=age,
+                    disabled=True,
+                    label_visibility='collapsed'
+                )
 
             with col2:
-                st.markdown('**Gender**')
+                st.markdown("**Gender**")
                 st.caption('1 = male, 0 = female')
-                gender = st.text_input('gender', placeholder='1', label_visibility='collapsed')
+
+                gender = (
+                    "1" if patient_gender == "Male"
+                    else "0" if patient_gender == "Female"
+                    else ""
+                )
+
+                st.text_input(
+                    'gender',
+                    value=gender,
+                    disabled=True,
+                    label_visibility='collapsed'
+                )
 
             with col1:
                 st.markdown('**Chest Pain Type**')
@@ -540,8 +637,17 @@ if selected == 'Disease Prediction':
                 user_input = [age, gender, cp, trestbps, chol, fbs, restecg,
                               thalach, exang, oldpeak, slope, ca, thal]
 
-                if '' in user_input:
-                    st.warning('Please fill in all fields before predicting.')
+                if (
+                    '' in user_input
+                    or not patient_name.strip()
+                    or patient_age is None
+                    or patient_gender == "Select Gender"
+                    or patient_gender == "Other"
+                    or not patient_contact.strip()
+                    or len(patient_contact) != 10
+
+                ):
+                    st.warning("Please complete all patient details and health parameters.")
                 else:
                     try:
                         user_input = [float(x) for x in user_input]
@@ -591,6 +697,40 @@ if selected == 'Disease Prediction':
         # Parkinson's
         # ---------------------------------------------------------
         elif disease_choice == 'Parkinsons':
+            st.subheader("Patient Details")
+
+            patient_col1, patient_col2 = st.columns(2)
+
+            with patient_col1:
+                patient_name = st.text_input("Patient Name")
+                patient_age = st.number_input(
+                "Patient Age", min_value=1, max_value=120, value=None
+            )
+
+            with patient_col2:
+                patient_gender = st.selectbox(
+                "Gender", 
+                ["Select Gender", "Male", "Female", "Other"]
+            )
+            patient_contact = st.text_input(
+                "Contact Number",
+                max_chars=10,
+                help="Enter a valid 10-digit contact number.",
+                key="parkinsons_contact",
+                on_change=only_digits,
+                args=("parkinson_contact",)
+            )
+
+            st.divider()
+            st.subheader("Parkinson's Health Parameters")
+
+            st.session_state.patient_details = {
+                "name": patient_name,
+                "age": patient_age,
+                "gender": patient_gender,
+                "contact": patient_contact,
+           }
+
 
             col1, col2 = st.columns(2)
 
@@ -698,8 +838,16 @@ if selected == 'Disease Prediction':
                               RAP, PPQ, DDP, Shimmer, Shimmer_dB, APQ3, APQ5,
                               APQ, DDA, NHR, HNR, RPDE, DFA, spread1, spread2, D2, PPE]
 
-                if '' in user_input:
-                    st.warning('Please fill in all fields before predicting.')
+                if (
+                    '' in user_input
+                    or not patient_name.strip()
+                    or patient_age is None
+                    or patient_gender == "Select Gender"
+                    or not patient_contact.strip()
+                    or len(patient_contact) != 10
+
+                ):
+                    st.warning("Please complete all patient details and health parameters.")
                 else:
                     try:
                         user_input = [float(x) for x in user_input]

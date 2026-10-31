@@ -60,6 +60,11 @@ def create_database():
                 REFERENCES patients(id)
             """)
 
+            cursor.execute("""
+                ALTER TABLE patients
+                ADD COLUMN IF NOT EXISTS visit_date DATE
+                """)
+
 
 def save_prediction_to_db(
     user_id, condition, result, risk, timestamp, inputs, patient_id=None
@@ -134,15 +139,19 @@ def clear_user_predictions(user_id):
             )
 
 
-def create_patient(doctor_id, patient_code, name, age, sex, contact=""):
+def create_patient(
+    doctor_id, patient_code, name, age, sex,
+    visit_date, contact=""
+):
     try:
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO patients
-                    (doctor_id, patient_code, name, age, sex, contact)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    (doctor_id, patient_code, name, age, sex,
+                     visit_date, contact)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         doctor_id,
@@ -150,15 +159,17 @@ def create_patient(doctor_id, patient_code, name, age, sex, contact=""):
                         name.strip(),
                         age,
                         sex,
+                        visit_date,
                         contact.strip(),
                     ),
                 )
-        return True, "Patient registered successfully."
+
+        return True, "Patient saved successfully."
 
     except Exception as e:
         if "unique" in str(e).lower():
             return False, "This patient code is already registered."
-        return False, f"Could not register patient: {e}"
+        return False, f"Could not save patient: {e}"
 
 
 def get_patients(doctor_id):
@@ -166,7 +177,15 @@ def get_patients(doctor_id):
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, patient_code, name, age, sex, contact, created_at
+                SELECT
+                    id,
+                    patient_code,
+                    name,
+                    age,
+                    sex,
+                    contact,
+                    created_at,
+                    visit_date
                 FROM patients
                 WHERE doctor_id = %s
                 ORDER BY name
@@ -184,6 +203,7 @@ def get_patients(doctor_id):
             "sex": row[4],
             "contact": row[5],
             "created_at": row[6],
+            "visit_date": row[7],
         }
         for row in rows
     ]
