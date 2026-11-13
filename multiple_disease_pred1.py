@@ -1225,6 +1225,7 @@ if selected == 'Patient Reports':
 # ---------------------------------------------------------------------
 # AI Chatbot Page
 # ---------------------------------------------------------------------
+
 if selected == 'AI Chatbot':
     render_ai_assistant_page()
 
