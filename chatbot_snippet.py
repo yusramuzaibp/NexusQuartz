@@ -6,6 +6,10 @@
 # =======================================================================
 
 import streamlit as st
+import streamlit as st
+from chatbot_engine import get_best_match
+from database.database import get_user_predictions
+
 
 try:
     from google import genai
@@ -44,115 +48,58 @@ def _get_client():
 #    Add as many `if` blocks as you like — order matters, the first
 #    matching keyword wins.
 # -----------------------------------------------------------------------
+
+
 def bot_reply(question, history=None):
-    q = question.lower()
+    q = question.lower().strip()
     history = history or []
 
-    # ---- questions about the user's own results (uses your app's
-    #      st.session_state.history, if you're tracking predictions) ----
-    if history and ('my prediction' in q or 'my result' in q or 'my latest' in q):
-        latest = history[-1]
-        return (f"Your most recent test was for **{latest['condition']}**, "
-                f"classified as **{latest['risk']} Risk** — result: "
-                f"\"{latest['result']}\".")
+    # Handle latest prediction
+    if any(phrase in q for phrase in [
+        'my prediction',
+        'my result',
+        'my latest',
+        'latest result',
+        'last result',
+        'recent result'
+    ]):
+        if not history:
+            return "I couldn't find any saved predictions in your account."
 
-    if history and ('history' in q or 'previous' in q or 'past result' in q):
+        # Database returns newest record first
+        latest = history[0]
+
+        return (
+            f"Your most recent test was for **{latest['condition']}**, "
+            f"classified as **{latest['risk']} Risk** — result: "
+            f"\"{latest['result']}\".\n\n"
+            f"Recorded on: {latest['timestamp']}"
+        )
+
+    # Handle prediction history
+    if any(word in q for word in ['history', 'previous', 'past result']):
+        if not history:
+            return "You don't have any saved prediction records yet."
+
         lines = '\n'.join(
             f"- {h['timestamp']}: {h['condition']} — {h['risk']} Risk"
-            for h in history[-5:]
+            for h in history[:5]
         )
-        return f"Here's your recent history:\n{lines}"
+        return f"Here are your five most recent predictions:\n{lines}"
 
-    # ---- symptoms (checked BEFORE general disease info, so a symptom
-    #      question gets a symptom answer, not the general blurb) ----
-    if 'symptom' in q or 'sign' in q or 'warning sign' in q:
-        if 'diabetes' in q or 'blood sugar' in q or 'glucose' in q:
-            return ("Common symptoms of diabetes include: frequent urination, "
-                    "excessive thirst, unexplained weight loss, extreme "
-                    "hunger, fatigue, blurred vision, slow-healing sores, and "
-                    "tingling/numbness in hands or feet. If you notice "
-                    "several of these, it's worth getting tested.")
-        if 'heart' in q or 'cardiac' in q or 'cardiovascular' in q:
-            return ("Common symptoms of heart disease include: chest pain or "
-                    "discomfort, shortness of breath, pain/numbness in the "
-                    "arms or shoulder, irregular heartbeat, fatigue, "
-                    "dizziness, and swelling in the legs or feet. Chest pain "
-                    "with shortness of breath needs urgent medical attention.")
-        if 'parkinson' in q:
-            return ("Common early symptoms of Parkinson's disease include: "
-                    "tremor (often starting in one hand), muscle stiffness, "
-                    "slowed movement, changes in handwriting, reduced "
-                    "facial expression, and a softer or slurred voice. "
-                    "Symptoms usually develop gradually over time.")
-        # symptom question but no disease named
-        return ("Which condition are you asking about — diabetes, heart "
-                "disease, or Parkinson's? I can list the common symptoms "
-                "for any of the three.")
-
-    # ---- general health knowledge keywords ----
-    if 'blood pressure' in q or 'hypertension' in q:
-        return ("High blood pressure (hypertension) means the force of blood "
-                "against artery walls is consistently too high. Normal is "
-                "below 120/80 mmHg. High BP increases risk of heart disease, "
-                "stroke, and kidney problems. Regular monitoring, reduced "
-                "sodium intake, exercise, and medication (if prescribed) can "
-                "help manage it.")
-
-    if 'diabetes' in q or 'blood sugar' in q or 'glucose' in q:
-        return ("Diabetes is a condition where blood sugar levels are too "
-                "high, either because the body doesn't produce enough insulin "
-                "or can't use it effectively. Managing diet, exercise, and "
-                "monitoring glucose levels are key to control.")
-
-    if 'bmi' in q or 'body mass index' in q:
-        return ("BMI (Body Mass Index) estimates body fat based on height "
-                "and weight. 18.5–24.9 is considered a healthy range, but it "
-                "doesn't account for muscle mass, so it's best used alongside "
-                "other health indicators.")
-
-    if 'cholesterol' in q:
-        return ("Cholesterol is a fatty substance in your blood. LDL ('bad') "
-                "cholesterol can build up in arteries, while HDL ('good') "
-                "cholesterol helps remove it. Diet, exercise, and sometimes "
-                "medication help keep levels balanced.")
-
-    if 'heart rate' in q or 'pulse' in q:
-        return ("A normal resting heart rate for adults is typically 60–100 "
-                "beats per minute. Lower resting rates are often seen in "
-                "people who are more physically fit.")
-
-    if 'parkinson' in q:
-        return ("Parkinson's disease is a progressive neurological condition "
-                "that affects movement, often causing tremors, stiffness, and "
-                "slowed movement. Early detection through voice/motor pattern "
-                "analysis (like this app's prediction tool) can help prompt "
-                "earlier specialist evaluation.")
-
-    if 'heart disease' in q or 'cardiac' in q or 'cardiovascular' in q:
-        return ("Heart disease covers a range of conditions affecting the "
-                "heart, often linked to high blood pressure, high cholesterol, "
-                "smoking, and lack of exercise. Regular checkups and "
-                "cardiovascular screening help catch risk early.")
-
-    if 'doctor' in q or 'specialist' in q or 'consult' in q:
-        return ("It's always a good idea to confirm any health concern with "
-                "a licensed doctor. If you've run a prediction in this app, "
-                "check the result's risk level — a 'High Risk' result "
-                "generally warrants a specialist visit sooner rather than later.")
-
-    if 'hello' in q or 'hi' in q or 'hey' in q:
-        return ("Hello! I'm your AI Health Assistant. Ask me about your "
-                "results, or general topics like blood pressure, diabetes, "
-                "BMI, or cholesterol.")
+    # Handle greetings
+    if any(word in q.split() for word in ['hello', 'hi', 'hey']):
+        return (
+            "Hello! I'm your AI Health Assistant. "
+            "Ask me about diabetes, heart disease, "
+            "Parkinson's disease or general health."
+        )
 
     if 'thank' in q:
         return "You're welcome! Let me know if you have any other questions."
 
-    # ---- fallback for anything that doesn't match a keyword ----
-    return ("Thanks for your question! I can share general health "
-            "information, but for anything specific to your symptoms or "
-            "results, please consult a qualified healthcare professional.")
-
+    answer, score = get_best_match(question)
+    return answer
 
 # -----------------------------------------------------------------------
 # 1b. REAL AI REPLY (Claude API), with automatic fallback to the
@@ -210,13 +157,13 @@ def bot_reply_ai(question, history=None, chat_messages=None):
 # -----------------------------------------------------------------------
 def render_ai_assistant_page():
     st.title('AI Health Assistant')
-    if _get_client() is not None:
-        st.caption('🟢 Online · Powered by Gemini · Ask me anything about your results or general health topics')
-    else:
-        st.caption('🟡 Basic mode (no API key set) · Ask about your results or general health topics')
+    st.caption(
+    "🟢 Offline · Powered by TF-IDF and Cosine Similarity "
+    "· Ask about diabetes, heart disease, Parkinson's and general health"
+)
 
-    history = st.session_state.get('history', [])
-
+    history = get_user_predictions(st.session_state.user_id)
+    
     # keep chat messages across reruns
     if 'chat_messages' not in st.session_state:
         st.session_state.chat_messages = [
@@ -253,7 +200,7 @@ def render_ai_assistant_page():
         with st.chat_message('user'):
             st.markdown(user_prompt)
 
-        reply = bot_reply_ai(user_prompt, history, st.session_state.chat_messages)
+        reply = bot_reply(user_prompt, history)
 
         with st.chat_message('assistant'):
             st.markdown(reply)

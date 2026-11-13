@@ -2,12 +2,14 @@
 import os
 import pickle
 from datetime import datetime
+import re
 
 import pandas as pd
 import streamlit as st
 from streamlit_option_menu import option_menu
 
 from chatbot_snippet import bot_reply, render_ai_assistant_page
+from database.database import get_user_predictions
 
 from database.database import (
     create_database,
@@ -16,6 +18,7 @@ from database.database import (
     clear_user_predictions,
     get_all_users,
     get_all_predictions,
+    get_or_create_patient,
     create_patient,
     get_patients
 )
@@ -208,7 +211,7 @@ with st.sidebar:
         menu_items = [
             "Dashboard",
             "Disease Prediction",
-            "Previous Records",
+            "Patient Reports",
             "AI Chatbot",
             "Find a Specialist",
         ]
@@ -227,7 +230,7 @@ with st.sidebar:
             icons=[
                 "speedometer2",
                 "clipboard2-pulse",
-                "clock-history",
+                "person-vcard",
                 "chat-dots",
                 "geo-alt",
             ],
@@ -503,6 +506,18 @@ if selected == 'Disease Prediction':
                             if risk_pct is not None:
                                 diab_diagnosis += f' ({risk_pct}% estimated risk)'
 
+                            # Save or retrieve the patient record
+                            patient_id = get_or_create_patient(
+                                doctor_id=st.session_state.user_id,
+                                name=patient_name.strip(),
+                                age=int(patient_age),
+                                sex=patient_gender,
+                                contact=patient_contact.strip()
+                            )
+
+                            # Store the selected patient ID for this prediction
+                            st.session_state.selected_patient_id = patient_id
+
                             log_prediction('Diabetes', diab_diagnosis, 'High' if is_diabetic else 'Low', inputs_dict)
                             st.success(diab_diagnosis)
                             if risk_pct is not None:
@@ -681,6 +696,16 @@ if selected == 'Disease Prediction':
                             input_labels = [label for label, _, _ in range_specs]
                             inputs_dict = dict(zip(input_labels, user_input))
 
+                            # Save or retrieve the patient record
+                            patient_id = get_or_create_patient(
+                                doctor_id=st.session_state.user_id,
+                                name=patient_name.strip(),
+                                age=int(patient_age),
+                                sex=patient_gender,
+                                contact=patient_contact.strip()
+                            )
+
+                            st.session_state.selected_patient_id = patient_id
                             if heart_prediction[0] == 1:
                                 heart_diagnosis = f'The person has a {risk_pct}% risk of Heart Disease (High Risk)'
                                 log_prediction('Heart Disease', heart_diagnosis, 'High', inputs_dict)
@@ -718,7 +743,7 @@ if selected == 'Disease Prediction':
                 help="Enter a valid 10-digit contact number.",
                 key="parkinsons_contact",
                 on_change=only_digits,
-                args=("parkinson_contact",)
+                args=("parkinsons_contact",)
             )
 
             st.divider()
@@ -893,6 +918,16 @@ if selected == 'Disease Prediction':
                             if hasattr(parkinsons_model, 'predict_proba'):
                                 risk_pct = round(parkinsons_model.predict_proba([user_input])[0][1] * 100, 1)
 
+                            # Save or retrieve the patient record
+                            patient_id = get_or_create_patient(
+                                doctor_id=st.session_state.user_id,
+                                name=patient_name.strip(),
+                                age=int(patient_age),
+                                sex=patient_gender,
+                                contact=patient_contact.strip()
+                            )
+
+                            st.session_state.selected_patient_id = patient_id
                             has_pd = parkinsons_prediction[0] == 1
                             parkinsons_diagnosis = ("The person has Parkinson's disease" if has_pd
                                                     else "The person does not have Parkinson's disease")
@@ -903,102 +938,290 @@ if selected == 'Disease Prediction':
                             st.success(parkinsons_diagnosis)
                             if risk_pct is not None:
                                 st.progress(risk_pct / 100)
+                            with col2:
+                               risk_filter = st.multiselect(
+                               "Filter by Risk",
+                               options=["High", "Low"],
+                                default=["High", "Low"],
+                            )
                     
                     
-                    except ValueError:
-                        st.error('Please enter valid numeric values in all fields.')
-
-
+                    except ValueError as e:
+                        st.error(f'Invalid value: {e}')
 # ---------------------------------------------------------------------
-# Previous Records Page
+# Patient Reports Page
 # ---------------------------------------------------------------------
-if selected == 'Previous Records':
+if selected == 'Patient Reports':
 
-    st.title('Previous Records')
-    st.write("Your full prediction history, saved to your account so it's here even after you log out.")
+    # Initialize selected report
+    if "selected_report_id" not in st.session_state:
+        st.session_state.selected_report_id = None
 
-    records = get_user_predictions(st.session_state.user_id)
-   
-    if not records:
-        st.info("No predictions yet. Head to **Disease Prediction** to run your first test.")
+    if st.session_state.selected_report_id is not None:
+        report_page = "details"
     else:
-        # Flatten each record: the prediction summary plus every clinical
-        # input that was entered for it (BMI, Glucose, Pregnancies... for
-        # Diabetes; age, cp, chol... for Heart Disease; fo, jitter... for
-        # Parkinson's). Different diseases have different parameters, so
-        # columns that don't apply to a given row are simply left blank.
-        flat_rows = []
-        for r in records:
-            row = {
-                'Condition': r['condition'],
-                'Result': r['result'],
-                'Risk': r['risk'],
-                'Date & Time': r['timestamp'],
-            }
-            row.update(r['inputs'])
-            flat_rows.append(row)
+        report_page = "list"
 
-        df_full = pd.DataFrame(flat_rows)
-        summary_cols = ['Condition', 'Result', 'Risk', 'Date & Time']
+    # ================================================================
+    # SCREEN 1: PATIENT REPORTS LIST
+    # ================================================================
+    if report_page == "list":
 
-        col1, col2 = st.columns(2)
-        with col1:
-            condition_filter = st.multiselect(
-                'Filter by condition',
-                options=sorted(df_full['Condition'].unique()),
-                default=sorted(df_full['Condition'].unique()),
+        st.title("Patient Reports")
+        st.write("View patient prediction history and download individual reports.")
+
+        records = get_user_predictions(st.session_state.user_id)
+
+        if not records:
+            st.info("No predictions yet. Head to Disease Prediction to run your first test.")
+
+        else:
+            report_rows = []
+
+            for r in records:
+
+                risk_match = re.search(
+                    r'(\d+(?:\.\d+)?)\s*%',
+                    r['result'] or ''
+                )
+
+                risk_percentage = (
+                    f"{risk_match.group(1)}%"
+                    if risk_match else "N/A"
+                )
+
+                risk_display = f"{risk_percentage} · {r['risk']}"
+
+                report_rows.append({
+                    "Patient Name": r['patient_name'],
+                    "Disease": r['condition'],
+                    "Risk": risk_display,
+                    "Date & Time": r['timestamp'],
+                })
+
+            df = pd.DataFrame(report_rows)
+
+            # Filters
+            col1, col2 = st.columns(2)
+
+            with col1:
+                condition_filter = st.multiselect(
+                    "Filter by Disease",
+                    options=sorted(df["Disease"].unique()),
+                    default=sorted(df["Disease"].unique()),
+                )
+
+            with col2:
+                risk_filter = st.selectbox(
+                    "Filter by Risk",
+                    options=["All", "High", "Low"],
+                    index=0,
+                    key="patient_reports_risk_v2"
+                )
+
+            # Apply filters
+            filtered_pairs = [
+                (r, row)
+                for r, row in zip(records, report_rows)
+                if row["Disease"] in condition_filter
+                and (
+                    risk_filter == "All"
+                    or r["risk"] == risk_filter
+                )
+            ]
+
+            filtered_records = [r for r, row in filtered_pairs]
+            filtered_rows = [row for r, row in filtered_pairs]
+
+            st.markdown(
+                f"**{len(filtered_records)}** prediction record(s) found."
             )
-        with col2:
-            risk_filter = st.multiselect(
-                'Filter by risk level',
-                options=sorted(df_full['Risk'].unique()),
-                default=sorted(df_full['Risk'].unique()),
-            )
 
-        filtered = df_full[
-            df_full['Condition'].isin(condition_filter)
-            & df_full['Risk'].isin(risk_filter)
-        ]
+            # Table headers
+            header_cols = st.columns([2, 1.5, 1.5, 2, 1.2])
 
-        show_inputs = st.checkbox(
-            'Show all input parameters in the table (BMI, Glucose, Pregnancies, etc.)'
-        )
+            header_cols[0].markdown("**Patient Name**")
+            header_cols[1].markdown("**Disease**")
+            header_cols[2].markdown("**Risk**")
+            header_cols[3].markdown("**Date & Time**")
+            header_cols[4].markdown("**Report**")
 
-        st.markdown(f"**{len(filtered)}** record(s) found.")
+            st.divider()
 
-        st.dataframe(
-            filtered if show_inputs else filtered[summary_cols],
-            use_container_width=True,
-            hide_index=True,
-        )
+            # Table rows
+            for record, row in zip(filtered_records, filtered_rows):
 
-        st.download_button(
-            '⬇️ Download full history as CSV (includes all input parameters)',
-            data=filtered.to_csv(index=False),
-            file_name='prediction_history_full.csv',
-            mime='text/csv',
-        )
-        
-        st.download_button(
-            '⬇️ Download prediction history as PDF',
-            data=generate_pdf(
-                filtered.to_dict(orient='records'),
-                'My Prediction History'
+                cols = st.columns([2, 1.5, 1.5, 2, 1.2])
+
+                cols[0].write(row["Patient Name"])
+                cols[1].write(row["Disease"])
+                cols[2].write(row["Risk"])
+                cols[3].write(row["Date & Time"])
+
+                if cols[4].button(
+                    "View",
+                    key=f"view_{record['id']}"
+                ):
+                    st.session_state.selected_report_id = record["id"]
+                    st.rerun()
+
+    # ================================================================
+    # SCREEN 2: PATIENT DETAILS
+    # ================================================================
+    elif report_page == "details":
+
+        all_records = get_user_predictions(st.session_state.user_id)
+
+        selected_record = next(
+            (
+                r for r in all_records
+                if r["id"] == st.session_state.selected_report_id
             ),
-            file_name='prediction_history.pdf',
-            mime='application/pdf',
+            None
         )
 
-        st.markdown('---')
-        with st.expander('⚠️ Danger zone'):
-            st.warning('This permanently deletes all of your saved prediction history. This cannot be undone.')
-            if st.button('Clear all my records'):
-                clear_user_predictions(st.session_state.user_id)
-                st.session_state.history = []
-                st.success('Your prediction history has been cleared.')
+        if selected_record is None:
+            st.error("Prediction record not found.")
+            st.session_state.selected_report_id = None
+            st.rerun()
+
+        else:
+            if st.button("← Back to Reports"):
+                st.session_state.selected_report_id = None
                 st.rerun()
 
+            st.title("Patient Details")
 
+            # Patient Information
+            st.subheader("Patient Information")
+
+            patient_data = {
+                "Patient Name": selected_record["patient_name"],
+                "Patient ID": selected_record["patient_code"],
+                "Age": selected_record["age"],
+                "Gender": selected_record["sex"],
+                "Contact Number": selected_record["contact"],
+            }
+
+            patient_df = pd.DataFrame(
+                list(patient_data.items()),
+                columns=["Field", "Details"]
+            )
+
+            st.table(patient_df)
+
+            st.divider()
+
+            # Prediction Summary
+            st.subheader("Prediction Summary")
+
+            prediction_data = {
+                "Disease": selected_record["condition"],
+                "Prediction Result": selected_record["result"],
+                "Risk Classification": selected_record["risk"],
+                "Date & Time": selected_record["timestamp"],
+            }
+
+            prediction_df = pd.DataFrame(
+                list(prediction_data.items()),
+                columns=["Field", "Details"]
+            )
+
+            st.table(prediction_df)
+
+            st.divider()
+
+            # Clinical Parameters
+            st.subheader("Clinical Parameters")
+
+            clinical_data = selected_record["inputs"]
+
+            if clinical_data:
+                clinical_df = pd.DataFrame(
+                    list(clinical_data.items()),
+                    columns=["Parameter", "Value"]
+                )
+
+                st.table(clinical_df)
+            else:
+                st.info("No clinical parameters available.")
+
+            st.divider()
+
+            # Individual PDF Download
+            from io import BytesIO
+            from reportlab.platypus import (
+                SimpleDocTemplate,
+                Paragraph,
+                Spacer,
+                Table,
+                TableStyle
+            )
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib.pagesizes import A4
+
+            pdf_buffer = BytesIO()
+
+            doc = SimpleDocTemplate(
+                pdf_buffer,
+                pagesize=A4
+            )
+
+            styles = getSampleStyleSheet()
+            elements = []
+
+            elements.append(
+                Paragraph("Patient Medical Prediction Report", styles["Title"])
+            )
+            elements.append(Spacer(1, 20))
+
+            elements.append(
+                Paragraph("Patient Information", styles["Heading2"])
+            )
+
+            patient_table_data = [["Field", "Details"]]
+
+            for key, value in patient_data.items():
+                patient_table_data.append([key, str(value)])
+
+            elements.append(Table(patient_table_data))
+            elements.append(Spacer(1, 20))
+
+            elements.append(
+                Paragraph("Prediction Summary", styles["Heading2"])
+            )
+
+            prediction_table_data = [["Field", "Details"]]
+
+            for key, value in prediction_data.items():
+                prediction_table_data.append([key, str(value)])
+
+            elements.append(Table(prediction_table_data))
+            elements.append(Spacer(1, 20))
+
+            elements.append(
+                Paragraph("Clinical Parameters", styles["Heading2"])
+            )
+
+            clinical_table_data = [["Parameter", "Value"]]
+
+            for key, value in clinical_data.items():
+                clinical_table_data.append([str(key), str(value)])
+
+            elements.append(Table(clinical_table_data))
+
+            doc.build(elements)
+
+            pdf_buffer.seek(0)
+
+            st.download_button(
+                label="Download Patient Report PDF",
+                data=pdf_buffer.getvalue(),
+                file_name=f"Patient_Report_{selected_record['id']}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 # ---------------------------------------------------------------------
 # AI Chatbot Page
 # ---------------------------------------------------------------------
