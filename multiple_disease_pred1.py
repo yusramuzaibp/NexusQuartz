@@ -3,6 +3,10 @@ import os
 import pickle
 from datetime import datetime
 
+from ui.styles import apply_global_styles
+from ui.authui import show_auth_page
+from ui.navigation import show_navigation
+
 import pandas as pd
 import streamlit as st
 from streamlit_option_menu import option_menu
@@ -56,92 +60,10 @@ if "user_name" not in st.session_state:
     st.session_state.user_name = ""
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
-
 if not st.session_state.logged_in:
 
-    st.markdown(
-        """
-        <div style="text-align:center;">
-        <h1>🧑‍⚕️ Multiple Disease Prediction</h1>
-        <p style="font-size:18px;">Log in or create an account to continue.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.divider()
-
-    login_tab, signup_tab = st.tabs(["🔐 Login", "📝 Sign Up"])
-
-    with login_tab:
-        st.subheader("Login to Your Account")
-        email = st.text_input("Email", placeholder="Enter your email", key="login_email")
-        password = st.text_input("Password", type="password", placeholder="Enter your password", key="login_password")
-
-        if st.button("🔐 Login", use_container_width=True):
-            if email == "" or password == "":
-                st.warning("⚠️ Please enter your email and password.")
-            else:
-                user = login_user(email, password)
-                if user:
-                    st.session_state.logged_in = True
-                    st.session_state.user_id = user[0]
-                    st.session_state.user_name = user[1]
-                    st.session_state.user_role = user[3]
-                    st.session_state.history = get_user_predictions(user[0])
-                    st.success("✅ Login successful!")
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid email or password.")
-
-    with signup_tab:
-        st.subheader("Create Your Account")
-        name = st.text_input("Full Name", placeholder="Enter your name", key="signup_name")
-        email = st.text_input("Email", placeholder="Enter your email", key="signup_email")
-        password = st.text_input("Password", type="password", placeholder="Create a password", key="signup_password")
-        confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm your password", key="confirm_password")
-
-
-        if st.button("📝 Create Account", use_container_width=True):
-            if not name or not email or not password or not confirm_password:
-                st.warning("⚠️ Please fill in all fields.")
-
-            elif password != confirm_password:
-                st.error("❌ Passwords do not match.")
-
-            else:
-                password_errors = validate_password(password)
-
-                if password_errors:
-                    st.error("❌ Your password does not meet the requirements.")
-                    st.markdown("**Please fix the following:**")
-
-                    for error in password_errors:
-                        st.write(f"• {error}")
-
-                else:
-                    try:
-                        result = create_user(name, email, password)
-
-                        if result:
-                            st.success("✅ Account created successfully!")
-                            st.info(
-                                "You can now go to the Login tab and log in."
-                            )
-                        else:
-                            st.error(
-                                "❌ An account with this email already exists."
-                            )
-
-                    except ValueError as e:
-                        st.error(str(e))
-
-                    except Exception:
-                        st.error(
-                            "❌ Unable to create your account. "
-                            "Please try again."
-                        )
-        st.stop()
-        
+    show_auth_page()
+    st.stop()
 #==============================================
 # EVERYTHING BELOW ONLY RUNS AFTER A SUCCESSFUL LOGIN
 # =======================================================================
@@ -195,70 +117,11 @@ def log_prediction(condition, result, risk, inputs=None):
         patient_id=patient_id,
     )
 # ---------------------------------------------------------------------
-# sidebar for navigation
-# ---------------------------------------------------------------------
-with st.sidebar:
-    st.markdown(f"### 👋 Welcome, **{st.session_state.user_name}**")
-    if st.button("🚪 Logout", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user_name = ""
-        st.session_state.user_id = None
-        st.rerun()
-    st.divider()
+# Apply global application styling
+apply_global_styles()
 
-
-    # Role-based navigation menu
-    user_role = st.session_state.get("user_role", "user")
-
-    if user_role == "admin":
-        selected = option_menu(
-            "Admin Panel",
-            [
-                "Admin Dashboard",
-                "Manage Users",
-                "All Prediction Records",
-            ],
-            icons=[
-                "speedometer2",
-                "people",
-                "clipboard-data",
-            ],
-            default_index=0,
-        )
-    
-    
-    else:
-        menu_items = [
-            "Dashboard",
-            "Disease Prediction",
-            "Patient Reports",
-            "AI Chatbot",
-            "Find a Specialist",
-        ]
-
-        default_page = st.session_state.get("page", "Dashboard")
-
-        if default_page not in menu_items:
-            default_page = "Dashboard"
-        if st.session_state.get("navigate_to_disease", False):
-            st.session_state.user_navigation = "Disease Prediction"
-            st.session_state.navigate_to_disease = False
-
-        selected = option_menu(
-            "Multiple Disease Prediction System",
-            menu_items,
-            icons=[
-                "speedometer2",
-                "clipboard2-pulse",
-                "person-vcard",
-                "chat-dots",
-                "geo-alt",
-            ],
-            default_index=menu_items.index(default_page),
-            key="user_navigation",
-        )
-
-        st.session_state.page = selected
+# Sidebar Navigation
+selected = show_navigation()
 # ---------------------------------------------------------------------
 # Admin pages
 # ---------------------------------------------------------------------
@@ -270,7 +133,7 @@ elif selected == "Manage Users":
 
 elif selected == "All Prediction Records":
     show_all_predictions()
-    
+
 # ---------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------
@@ -305,15 +168,7 @@ if selected == 'Disease Prediction':
         },
     }
 
-    st.markdown("""
-        <style>
-        div[data-testid="stButton"] > button {
-            border-radius: 8px;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    # ===================================================================
+        # ===================================================================
     # STEP 1: choose which disease to predict
     # ===================================================================
     if st.session_state.disease_choice is None:
@@ -368,7 +223,7 @@ if selected == 'Disease Prediction':
 
             with patient_col2:
                 patient_gender = st.selectbox(
-                "Gender", 
+                "Gender",
                 ["Select Gender","Male", "Female", "Other"]
             )
             patient_contact = st.text_input(
@@ -430,7 +285,7 @@ if selected == 'Disease Prediction':
                     value=Age,
                     disabled=True,
                     label_visibility='collapsed'
-                ) 
+                )
 
             diab_diagnosis = ''
 
@@ -469,7 +324,7 @@ if selected == 'Disease Prediction':
                                 "before predicting:\n" + "\n".join(problems)
                             )
                         else:
-                            
+
                             diab_prediction = diabetes_model.predict([user_input])
                             input_labels = [label for label, _, _ in range_specs]
                             inputs_dict = dict(zip(input_labels, user_input))
@@ -501,7 +356,7 @@ if selected == 'Disease Prediction':
                             if risk_pct is not None:
                                 st.progress(risk_pct / 100)
 
-                            
+
                     except ValueError:
                         st.error('Please enter valid numeric values in all fields.')
 
@@ -521,7 +376,7 @@ if selected == 'Disease Prediction':
 
             with patient_col2:
                 patient_gender = st.selectbox(
-                "Gender", 
+                "Gender",
                 ["Select Gender", "Male", "Female", "Other"]
             )
             patient_contact = st.text_input(
@@ -530,7 +385,7 @@ if selected == 'Disease Prediction':
                 help="Enter a valid 10-digit contact number.",
                 key="heart_contact",
                 on_change=only_digits,
-                args=("heart_contact",)                
+                args=("heart_contact",)
             )
 
             st.divider()
@@ -612,7 +467,7 @@ if selected == 'Disease Prediction':
                 st.markdown('**Slope of Peak Exercise ST**')
                 st.caption('0–2 scale')
                 slope = st.text_input('slope', placeholder='1', label_visibility='collapsed')
-             
+
 
             with col2:
                 st.markdown('**Major Vessels Colored (Fluoroscopy)**')
@@ -712,7 +567,7 @@ if selected == 'Disease Prediction':
 
             with patient_col2:
                 patient_gender = st.selectbox(
-                "Gender", 
+                "Gender",
                 ["Select Gender", "Male", "Female", "Other"]
             )
             patient_contact = st.text_input(
@@ -916,7 +771,7 @@ if selected == 'Disease Prediction':
                             st.success(parkinsons_diagnosis)
                             if risk_pct is not None:
                                 st.progress(risk_pct / 100)
-                    
+
                     except ValueError as e:
                         st.error(f'Invalid value: {e}')
 # ---------------------------------------------------------------------
