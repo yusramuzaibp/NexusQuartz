@@ -17,13 +17,21 @@ from database.database import (
     get_all_predictions,
     get_or_create_patient,
 )
-
-from auth.authentication import create_user, login_user
+from auth.authentication import (
+    create_user,
+    login_user,
+    validate_password,
+)
 from utils.validation import check_ranges
 from dashboard import show_dashboard
 
 from app_modules.patient_reports import show_patient_reports
 from app_modules.find_specialist import show_find_specialist
+from admin.admin import (
+    show_admin_dashboard,
+    show_manage_users,
+    show_all_predictions,
+)
 
 def only_digits(key):
     value = st.session_state.get(key, "")
@@ -92,25 +100,49 @@ if not st.session_state.logged_in:
         password = st.text_input("Password", type="password", placeholder="Create a password", key="signup_password")
         confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm your password", key="confirm_password")
 
+
         if st.button("📝 Create Account", use_container_width=True):
             if not name or not email or not password or not confirm_password:
                 st.warning("⚠️ Please fill in all fields.")
+
             elif password != confirm_password:
                 st.error("❌ Passwords do not match.")
-            elif len(password) < 6:
-                st.warning("⚠️ Password must contain at least 6 characters.")
+
             else:
-                result = create_user(name, email, password)
-                if result:
-                    st.success("✅ Account created successfully!")
-                    st.info("You can now go to the Login tab and log in.")
+                password_errors = validate_password(password)
+
+                if password_errors:
+                    st.error("❌ Your password does not meet the requirements.")
+                    st.markdown("**Please fix the following:**")
+
+                    for error in password_errors:
+                        st.write(f"• {error}")
+
                 else:
-                    st.error("❌ An account with this email already exists.")
+                    try:
+                        result = create_user(name, email, password)
 
-    st.stop()  # nothing below this line runs until the user logs in
+                        if result:
+                            st.success("✅ Account created successfully!")
+                            st.info(
+                                "You can now go to the Login tab and log in."
+                            )
+                        else:
+                            st.error(
+                                "❌ An account with this email already exists."
+                            )
 
+                    except ValueError as e:
+                        st.error(str(e))
 
-# =======================================================================
+                    except Exception:
+                        st.error(
+                            "❌ Unable to create your account. "
+                            "Please try again."
+                        )
+        st.stop()
+        
+#==============================================
 # EVERYTHING BELOW ONLY RUNS AFTER A SUCCESSFUL LOGIN
 # =======================================================================
 
@@ -227,63 +259,21 @@ with st.sidebar:
         )
 
         st.session_state.page = selected
-
 # ---------------------------------------------------------------------
 # Admin pages
 # ---------------------------------------------------------------------
 if selected == "Admin Dashboard":
-    st.title("🛡️ Admin Dashboard")
-    st.write("Welcome to the system administration panel.")
-    st.info("User management and prediction record management will be added here.")
+    show_admin_dashboard()
 
 elif selected == "Manage Users":
-    st.title("👥 Manage Users")
-    st.write("View all registered accounts in the system.")
-
-    users = get_all_users()
-
-    if users:
-        users_df = pd.DataFrame(users)
-
-        st.metric("Total Registered Accounts", len(users))
-
-        st.dataframe(
-            users_df,
-            use_container_width=True,
-            hide_index=True
-        )
-
-        csv_data = users_df.to_csv(index=False)
-
-        st.download_button(
-            "⬇️ Download User List",
-            data=csv_data,
-            file_name="registered_users.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("No registered accounts found.")
+    show_manage_users()
 
 elif selected == "All Prediction Records":
-    st.title("📋 All Prediction Records")
-    st.write("View prediction records from all registered users.")
-
-    predictions = get_all_predictions()
-
-    if predictions:
-        predictions_df = pd.DataFrame(predictions)
-
-        st.metric("Total Predictions", len(predictions))
-
-        st.dataframe(
-            predictions_df,
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("No prediction records found.")
-
+    show_all_predictions()
+    
+# ---------------------------------------------------------------------
 # Dashboard
+# ---------------------------------------------------------------------
 if selected == 'Dashboard':
     show_dashboard()
 # ---------------------------------------------------------------------
