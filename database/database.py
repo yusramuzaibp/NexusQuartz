@@ -25,6 +25,10 @@ def create_database():
                     password TEXT NOT NULL
                 )
             """)
+            cursor.execute("""
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
+                 """)
 
             
             cursor.execute("""

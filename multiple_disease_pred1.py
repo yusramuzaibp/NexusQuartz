@@ -2,37 +2,28 @@
 import os
 import pickle
 from datetime import datetime
-import re
 
 import pandas as pd
 import streamlit as st
 from streamlit_option_menu import option_menu
 
-from chatbot_snippet import bot_reply, render_ai_assistant_page
-from database.database import get_user_predictions
+from chatbot_snippet import render_ai_assistant_page
 
 from database.database import (
     create_database,
     save_prediction_to_db,
     get_user_predictions,
-    clear_user_predictions,
     get_all_users,
     get_all_predictions,
     get_or_create_patient,
-    create_patient,
-    get_patients
 )
 
-from auth.authentication import hash_password, create_user, login_user
+from auth.authentication import create_user, login_user
 from utils.validation import check_ranges
 from dashboard import show_dashboard
 
-from utils.pdf_generator import generate_pdf
-from io import BytesIO
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from app_modules.patient_reports import show_patient_reports
+from app_modules.find_specialist import show_find_specialist
 
 def only_digits(key):
     value = st.session_state.get(key, "")
@@ -123,7 +114,6 @@ if not st.session_state.logged_in:
 # EVERYTHING BELOW ONLY RUNS AFTER A SUCCESSFUL LOGIN
 # =======================================================================
 
-
 # ---------------------------------------------------------------------
 # loading the saved models
 # Path is relative to this file's location, so it works on any machine
@@ -134,8 +124,6 @@ working_dir = os.path.dirname(os.path.abspath(__file__))
 diabetes_model = pickle.load(open(f'{working_dir}/saved_models/diabetes_model.sav', 'rb'))
 heart_disease_model = pickle.load(open(f'{working_dir}/saved_models/heart_disease_model.sav', 'rb'))
 parkinsons_model = pickle.load(open(f'{working_dir}/saved_models/parkinsons_model.sav', 'rb'))
-
-
 # ---------------------------------------------------------------------
 # session state: keeps a running log of predictions for the Dashboard
 # (resets when the app restarts — swap for a CSV/DB write if you want
@@ -938,13 +926,6 @@ if selected == 'Disease Prediction':
                             st.success(parkinsons_diagnosis)
                             if risk_pct is not None:
                                 st.progress(risk_pct / 100)
-                            with col2:
-                               risk_filter = st.multiselect(
-                               "Filter by Risk",
-                               options=["High", "Low"],
-                                default=["High", "Low"],
-                            )
-                    
                     
                     except ValueError as e:
                         st.error(f'Invalid value: {e}')
@@ -952,303 +933,14 @@ if selected == 'Disease Prediction':
 # Patient Reports Page
 # ---------------------------------------------------------------------
 if selected == 'Patient Reports':
-
-    # Initialize selected report
-    if "selected_report_id" not in st.session_state:
-        st.session_state.selected_report_id = None
-
-    if st.session_state.selected_report_id is not None:
-        report_page = "details"
-    else:
-        report_page = "list"
-
-    # ================================================================
-    # SCREEN 1: PATIENT REPORTS LIST
-    # ================================================================
-    if report_page == "list":
-
-        st.title("Patient Reports")
-        st.write("View patient prediction history and download individual reports.")
-
-        records = get_user_predictions(st.session_state.user_id)
-
-        if not records:
-            st.info("No predictions yet. Head to Disease Prediction to run your first test.")
-
-        else:
-            report_rows = []
-
-            for r in records:
-
-                risk_match = re.search(
-                    r'(\d+(?:\.\d+)?)\s*%',
-                    r['result'] or ''
-                )
-
-                risk_percentage = (
-                    f"{risk_match.group(1)}%"
-                    if risk_match else "N/A"
-                )
-
-                risk_display = f"{risk_percentage} · {r['risk']}"
-
-                report_rows.append({
-                    "Patient Name": r['patient_name'],
-                    "Disease": r['condition'],
-                    "Risk": risk_display,
-                    "Date & Time": r['timestamp'],
-                })
-
-            df = pd.DataFrame(report_rows)
-
-            # Filters
-            col1, col2 = st.columns(2)
-
-            with col1:
-                condition_filter = st.multiselect(
-                    "Filter by Disease",
-                    options=sorted(df["Disease"].unique()),
-                    default=sorted(df["Disease"].unique()),
-                )
-
-            with col2:
-                risk_filter = st.selectbox(
-                    "Filter by Risk",
-                    options=["All", "High", "Low"],
-                    index=0,
-                    key="patient_reports_risk_v2"
-                )
-
-            # Apply filters
-            filtered_pairs = [
-                (r, row)
-                for r, row in zip(records, report_rows)
-                if row["Disease"] in condition_filter
-                and (
-                    risk_filter == "All"
-                    or r["risk"] == risk_filter
-                )
-            ]
-
-            filtered_records = [r for r, row in filtered_pairs]
-            filtered_rows = [row for r, row in filtered_pairs]
-
-            st.markdown(
-                f"**{len(filtered_records)}** prediction record(s) found."
-            )
-
-            # Table headers
-            header_cols = st.columns([2, 1.5, 1.5, 2, 1.2])
-
-            header_cols[0].markdown("**Patient Name**")
-            header_cols[1].markdown("**Disease**")
-            header_cols[2].markdown("**Risk**")
-            header_cols[3].markdown("**Date & Time**")
-            header_cols[4].markdown("**Report**")
-
-            st.divider()
-
-            # Table rows
-            for record, row in zip(filtered_records, filtered_rows):
-
-                cols = st.columns([2, 1.5, 1.5, 2, 1.2])
-
-                cols[0].write(row["Patient Name"])
-                cols[1].write(row["Disease"])
-                cols[2].write(row["Risk"])
-                cols[3].write(row["Date & Time"])
-
-                if cols[4].button(
-                    "View",
-                    key=f"view_{record['id']}"
-                ):
-                    st.session_state.selected_report_id = record["id"]
-                    st.rerun()
-
-    # ================================================================
-    # SCREEN 2: PATIENT DETAILS
-    # ================================================================
-    elif report_page == "details":
-
-        all_records = get_user_predictions(st.session_state.user_id)
-
-        selected_record = next(
-            (
-                r for r in all_records
-                if r["id"] == st.session_state.selected_report_id
-            ),
-            None
-        )
-
-        if selected_record is None:
-            st.error("Prediction record not found.")
-            st.session_state.selected_report_id = None
-            st.rerun()
-
-        else:
-            if st.button("← Back to Reports"):
-                st.session_state.selected_report_id = None
-                st.rerun()
-
-            st.title("Patient Details")
-
-            # Patient Information
-            st.subheader("Patient Information")
-
-            patient_data = {
-                "Patient Name": selected_record["patient_name"],
-                "Patient ID": selected_record["patient_code"],
-                "Age": selected_record["age"],
-                "Gender": selected_record["sex"],
-                "Contact Number": selected_record["contact"],
-            }
-
-            patient_df = pd.DataFrame(
-                list(patient_data.items()),
-                columns=["Field", "Details"]
-            )
-
-            st.table(patient_df)
-
-            st.divider()
-
-            # Prediction Summary
-            st.subheader("Prediction Summary")
-
-            prediction_data = {
-                "Disease": selected_record["condition"],
-                "Prediction Result": selected_record["result"],
-                "Risk Classification": selected_record["risk"],
-                "Date & Time": selected_record["timestamp"],
-            }
-
-            prediction_df = pd.DataFrame(
-                list(prediction_data.items()),
-                columns=["Field", "Details"]
-            )
-
-            st.table(prediction_df)
-
-            st.divider()
-
-            # Clinical Parameters
-            st.subheader("Clinical Parameters")
-
-            clinical_data = selected_record["inputs"]
-
-            if clinical_data:
-                clinical_df = pd.DataFrame(
-                    list(clinical_data.items()),
-                    columns=["Parameter", "Value"]
-                )
-
-                st.table(clinical_df)
-            else:
-                st.info("No clinical parameters available.")
-
-            st.divider()
-
-            # Individual PDF Download
-            from io import BytesIO
-            from reportlab.platypus import (
-                SimpleDocTemplate,
-                Paragraph,
-                Spacer,
-                Table,
-                TableStyle
-            )
-            from reportlab.lib import colors
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.lib.pagesizes import A4
-
-            pdf_buffer = BytesIO()
-
-            doc = SimpleDocTemplate(
-                pdf_buffer,
-                pagesize=A4
-            )
-
-            styles = getSampleStyleSheet()
-            elements = []
-
-            elements.append(
-                Paragraph("Patient Medical Prediction Report", styles["Title"])
-            )
-            elements.append(Spacer(1, 20))
-
-            elements.append(
-                Paragraph("Patient Information", styles["Heading2"])
-            )
-
-            patient_table_data = [["Field", "Details"]]
-
-            for key, value in patient_data.items():
-                patient_table_data.append([key, str(value)])
-
-            elements.append(Table(patient_table_data))
-            elements.append(Spacer(1, 20))
-
-            elements.append(
-                Paragraph("Prediction Summary", styles["Heading2"])
-            )
-
-            prediction_table_data = [["Field", "Details"]]
-
-            for key, value in prediction_data.items():
-                prediction_table_data.append([key, str(value)])
-
-            elements.append(Table(prediction_table_data))
-            elements.append(Spacer(1, 20))
-
-            elements.append(
-                Paragraph("Clinical Parameters", styles["Heading2"])
-            )
-
-            clinical_table_data = [["Parameter", "Value"]]
-
-            for key, value in clinical_data.items():
-                clinical_table_data.append([str(key), str(value)])
-
-            elements.append(Table(clinical_table_data))
-
-            doc.build(elements)
-
-            pdf_buffer.seek(0)
-
-            st.download_button(
-                label="Download Patient Report PDF",
-                data=pdf_buffer.getvalue(),
-                file_name=f"Patient_Report_{selected_record['id']}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+    show_patient_reports()
 # ---------------------------------------------------------------------
 # AI Chatbot Page
 # ---------------------------------------------------------------------
-
 if selected == 'AI Chatbot':
     render_ai_assistant_page()
-
-
 # ---------------------------------------------------------------------
 # Find a Specialist Page
 # ---------------------------------------------------------------------
 if selected == 'Find a Specialist':
-    st.title('Find a Specialist')
-    st.write(
-        "If a prediction came back **High Risk**, it's a good idea to "
-        "follow up with the right kind of doctor. Here's a quick guide:"
-    )
-
-    specialists = {
-        'Diabetes': 'Endocrinologist',
-        'Heart Disease': 'Cardiologist',
-        'Parkinsons': 'Neurologist',
-    }
-    for condition, specialist in specialists.items():
-        st.markdown(f"- **{condition}** → {specialist}")
-
-    st.info(
-        "This is a placeholder page — plug in a real directory, clinic "
-        "locator API, or contact list here when you're ready."
-    )
+    show_find_specialist()
