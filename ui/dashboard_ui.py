@@ -4,6 +4,8 @@ import pandas as pd
 import calendar
 from datetime import date
 from html import escape
+import base64
+from pathlib import Path
 
 
 def render_dashboard(
@@ -14,7 +16,6 @@ def render_dashboard(
     history_df
 ):
     today = date.today()
-
     # ================= GLOBAL DASHBOARD STYLING =================
 
     st.markdown("""
@@ -284,11 +285,15 @@ def render_dashboard(
                 )
                 st.rerun()
 
-        # Build calendar
-        month_calendar = calendar.monthcalendar(
-            current_month.year,
-            current_month.month
+        # Build calendar with Sunday as the first day
+        calendar_generator = calendar.Calendar(
+            firstweekday=calendar.SUNDAY
         )
+
+        month_calendar = calendar_generator.monthdayscalendar(
+        current_month.year,
+        current_month.month
+     )
 
         calendar_html = """
         <table class="calendar-table">

@@ -6,6 +6,15 @@ from datetime import datetime
 from ui.styles import apply_global_styles
 from ui.authui import show_auth_page
 from ui.navigation import show_navigation
+from ui.disease_prediction_ui import (
+    render_disease_selection,
+    render_disease_form_header,
+    render_back_button,
+    render_patient_details,
+    render_disease_parameters_header,
+    render_prediction_button,
+    load_css,
+)
 
 import pandas as pd
 import streamlit as st
@@ -45,6 +54,7 @@ def only_digits(key):
 # ---------------------------------------------------------------------
 # page config -- must be the very first Streamlit command in the file
 # ---------------------------------------------------------------------
+load_css()
 st.set_page_config(page_title="Multiple Disease Prediction", layout="wide", page_icon="🧑‍⚕️")
 # =======================================================================
 # LOGIN / SIGN UP
@@ -168,30 +178,16 @@ if selected == 'Disease Prediction':
         },
     }
 
-        # ===================================================================
+    # ===================================================================
     # STEP 1: choose which disease to predict
     # ===================================================================
     if st.session_state.disease_choice is None:
 
-        st.title('Select Disease to Predict')
-        st.write('Choose a disease category. You will be guided through the required clinical parameters.')
+        selected_disease = render_disease_selection(disease_info)
 
-        cols = st.columns(3)
-        for col, (name, info) in zip(cols, disease_info.items()):
-            with col:
-                st.markdown(f"""
-                    <div style="border:2px solid #e5e7eb; border-radius:14px; padding:20px;
-                                margin-bottom:10px; background:#fff; min-height:190px;">
-                        <div style="font-size:26px;">{info['icon']}</div>
-                        <div style="font-weight:700; font-size:16px; margin-top:10px; color:#0f172a;">{name}</div>
-                        <div style="font-size:13px; color:#64748b; margin-top:6px; line-height:1.5;">{info['desc']}</div>
-                        <div style="font-size:13px; color:{info['color']}; font-weight:600; margin-top:10px;">{info['params']} parameters &rsaquo;</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button(f'Select {name}', key=f'select_{name}', use_container_width=True):
-                    st.session_state.disease_choice = name
-                    st.rerun()
-
+        if selected_disease:
+            st.session_state.disease_choice = selected_disease
+            st.rerun()
     # ===================================================================
     # STEP 2: show the form for the chosen disease
     # ===================================================================
@@ -199,51 +195,26 @@ if selected == 'Disease Prediction':
         disease_choice = st.session_state.disease_choice
         info = disease_info[disease_choice]
 
-        if st.button('← Back to disease selection'):
+        if render_back_button():
             st.session_state.disease_choice = None
             st.rerun()
-
-        st.title(f'{disease_choice} Prediction')
-        st.markdown('---')
+        render_disease_form_header(disease_choice)
 
         # ---------------------------------------------------------
         # Diabetes
         # ---------------------------------------------------------
         if disease_choice == 'Diabetes':
 
-            st.subheader("Patient Details")
+            patient_name, patient_age, patient_gender, patient_contact = render_patient_details(only_digits,"diabetes_contact")
 
-            patient_col1, patient_col2 = st.columns(2)
-
-            with patient_col1:
-                patient_name = st.text_input("Patient Name")
-                patient_age = st.number_input(
-                "Patient Age", min_value=1, max_value=120, value=None
-            )
-
-            with patient_col2:
-                patient_gender = st.selectbox(
-                "Gender",
-                ["Select Gender","Male", "Female", "Other"]
-            )
-            patient_contact = st.text_input(
-                "Contact Number",
-                max_chars=10,
-                help="Enter a valid 10-digit contact number.",
-                key="diabetes_contact",
-                on_change=only_digits,
-                args=("diabetes_contact",)
-            )
-
-            st.divider()
-            st.subheader("Diabetes Health Parameters")
+            render_disease_parameters_header("Diabetes")
 
             st.session_state.patient_details = {
                 "name": patient_name,
                 "age": patient_age,
                 "gender": patient_gender,
                 "contact": patient_contact,
-           }
+            }
 
             col1, col2 = st.columns(2)
 
@@ -289,7 +260,7 @@ if selected == 'Disease Prediction':
 
             diab_diagnosis = ''
 
-            if st.button('Diabetes Test Result'):
+            if render_prediction_button("Diabetes"):
                 user_input = [Pregnancies, Glucose, BloodPressure, SkinThickness,
                               Insulin, BMI, DiabetesPedigreeFunction, Age]
 
@@ -364,39 +335,18 @@ if selected == 'Disease Prediction':
         # Heart Disease
         # ---------------------------------------------------------
         elif disease_choice == 'Heart Disease':
-            st.subheader("Patient Details")
-
-            patient_col1, patient_col2 = st.columns(2)
-
-            with patient_col1:
-                patient_name = st.text_input("Patient Name")
-                patient_age = st.number_input(
-                "Patient Age", min_value=1, max_value=120, value=None
+            patient_name, patient_age, patient_gender, patient_contact = render_patient_details(
+                only_digits, "heart_contact"
             )
 
-            with patient_col2:
-                patient_gender = st.selectbox(
-                "Gender",
-                ["Select Gender", "Male", "Female", "Other"]
-            )
-            patient_contact = st.text_input(
-                "Contact Number",
-                max_chars=10,
-                help="Enter a valid 10-digit contact number.",
-                key="heart_contact",
-                on_change=only_digits,
-                args=("heart_contact",)
-            )
-
-            st.divider()
-            st.subheader("Heart Disease Health Parameters")
+            render_disease_parameters_header("Heart Disease")
 
             st.session_state.patient_details = {
                 "name": patient_name,
                 "age": patient_age,
                 "gender": patient_gender,
                 "contact": patient_contact,
-           }
+            }
 
             col1, col2 = st.columns(2)
 
@@ -555,39 +505,18 @@ if selected == 'Disease Prediction':
         # Parkinson's
         # ---------------------------------------------------------
         elif disease_choice == 'Parkinsons':
-            st.subheader("Patient Details")
-
-            patient_col1, patient_col2 = st.columns(2)
-
-            with patient_col1:
-                patient_name = st.text_input("Patient Name")
-                patient_age = st.number_input(
-                "Patient Age", min_value=1, max_value=120, value=None
+            patient_name, patient_age, patient_gender, patient_contact = render_patient_details(
+                only_digits, "parkinsons_contact"
             )
 
-            with patient_col2:
-                patient_gender = st.selectbox(
-                "Gender",
-                ["Select Gender", "Male", "Female", "Other"]
-            )
-            patient_contact = st.text_input(
-                "Contact Number",
-                max_chars=10,
-                help="Enter a valid 10-digit contact number.",
-                key="parkinsons_contact",
-                on_change=only_digits,
-                args=("parkinsons_contact",)
-            )
-
-            st.divider()
-            st.subheader("Parkinson's Health Parameters")
+            render_disease_parameters_header("Parkinson's")
 
             st.session_state.patient_details = {
                 "name": patient_name,
                 "age": patient_age,
                 "gender": patient_gender,
                 "contact": patient_contact,
-           }
+            }
 
 
             col1, col2 = st.columns(2)
@@ -691,7 +620,7 @@ if selected == 'Disease Prediction':
 
             parkinsons_diagnosis = ''
 
-            if st.button("Parkinson's Test Result"):
+            if render_prediction_button("Parkinsons"):
                 user_input = [fo, fhi, flo, Jitter_percent, Jitter_Abs,
                               RAP, PPQ, DDP, Shimmer, Shimmer_dB, APQ3, APQ5,
                               APQ, DDA, NHR, HNR, RPDE, DFA, spread1, spread2, D2, PPE]

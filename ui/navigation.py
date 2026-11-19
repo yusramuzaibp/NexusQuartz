@@ -1,3 +1,4 @@
+
 import streamlit as st
 from streamlit_option_menu import option_menu
 
@@ -7,7 +8,7 @@ from streamlit_option_menu import option_menu
 NAVIGATION_STYLES = {
     "container": {
         "padding": "8px",
-        "background-color": "#FFFFFF",
+        "background-color":"#F4FBFC",
         "border-radius": "12px",
     },
     "icon": {

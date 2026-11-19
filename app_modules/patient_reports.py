@@ -159,6 +159,7 @@ def show_patient_reports():
             st.rerun()
 
         else:
+            st.write("")            
             if st.button("← Back to Reports"):
                 st.session_state.selected_report_id = None
                 st.rerun()
