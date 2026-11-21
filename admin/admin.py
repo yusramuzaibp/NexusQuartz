@@ -2,8 +2,13 @@
 import streamlit as st
 import pandas as pd
 
-from database.database import get_all_users, get_all_predictions
-
+from database.database import (
+    get_all_users,
+    get_all_predictions,
+    update_user,
+    update_user_status,
+    delete_user,
+)
 
 def show_admin_dashboard():
     st.title("🛡️ Admin Dashboard")
@@ -166,51 +171,156 @@ def show_admin_dashboard():
 
     st.divider()
 
-    # Quick navigation information
-    st.subheader("⚙️ Administration")
-
-    quick_col1, quick_col2 = st.columns(2)
-
-    with quick_col1:
-        st.info(
-            "👥 **Manage Users**\n\n"
-            "View all registered accounts and download user records."
-        )
-
-    with quick_col2:
-        st.info(
-            "📋 **Prediction Records**\n\n"
-            "Monitor prediction history across all registered users."
-        )
-
 
 def show_manage_users():
-    st.title("👥 Manage Users")
-    st.write("View all registered accounts in the system.")
+    st.subheader("👥 Manage Users")
 
     users = get_all_users()
 
-    if users:
-        users_df = pd.DataFrame(users)
+    st.metric("Total Accounts", len(users))
 
-        st.metric("Total Registered Accounts", len(users))
+    if not users:
+        st.info("No users registered yet.")
+        return
 
-        st.dataframe(
-            users_df,
-            use_container_width=True,
-            hide_index=True
+    df = pd.DataFrame(users)
+
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # PDF download
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+    from io import BytesIO
+
+    pdf_buffer = BytesIO()
+    pdf = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4))
+
+    table_data = [["ID", "Name", "Email", "Role", "Status"]]
+
+    for user in users:
+        table_data.append([
+            user["id"],
+            user["name"],
+            user["email"],
+            user["role"],
+            user["status"],
+        ])
+
+    table = Table(table_data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("PADDING", (0, 0), (-1, -1), 7),
+    ]))
+
+    pdf.build([table])
+    pdf_buffer.seek(0)
+
+    st.download_button(
+        "📄 Download User List (PDF)",
+        data=pdf_buffer.getvalue(),
+        file_name="user_list.pdf",
+        mime="application/pdf",
+    )
+
+    st.divider()
+    st.subheader("Manage Individual Accounts")
+
+    selected_id = st.selectbox(
+        "Select User ID",
+        [user["id"] for user in users],
+    )
+
+    selected_user = next(
+        user for user in users if user["id"] == selected_id
+    )
+
+    st.write(f"**Selected:** {selected_user['name']}")
+
+    with st.expander("✏️ Edit User"):
+        new_name = st.text_input(
+            "Name",
+            value=selected_user["name"],
+            key="edit_name",
+        )
+        new_email = st.text_input(
+            "Email",
+            value=selected_user["email"],
+            key="edit_email",
+        )
+        new_role = st.selectbox(
+            "Role",
+            ["user", "admin"],
+            index=0 if selected_user["role"] == "user" else 1,
+            key="edit_role",
         )
 
-        csv_data = users_df.to_csv(index=False)
+        if st.button("Save Changes"):
+            success, message = update_user(
+                selected_id, new_name, new_email, new_role
+            )
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
 
-        st.download_button(
-            "⬇️ Download User List",
-            data=csv_data,
-            file_name="registered_users.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("No registered accounts found.")
+    st.write(f"**Account status:** {selected_user['status']}")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("❄️ Freeze"):
+            success, message = update_user_status(
+                selected_id, "frozen"
+            )
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+
+    with col2:
+        if st.button("🔓 Unfreeze"):
+            success, message = update_user_status(
+                selected_id, "active"
+            )
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+
+    with col3:
+        if st.button("🚫 Revoke Access"):
+            success, message = update_user_status(
+                selected_id, "revoked"
+            )
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+
+    st.divider()
+
+    confirm_delete = st.checkbox(
+        "I confirm that I want to delete this account.",
+        key="confirm_delete",
+    )
+
+    if st.button("🗑️ Delete User", type="primary"):
+        if confirm_delete:
+            success, message = delete_user(selected_id)
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+        else:
+            st.warning("Please confirm before deleting.")
 
 
 def show_all_predictions():

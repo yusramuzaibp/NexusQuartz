@@ -25,10 +25,6 @@ def create_database():
                     password TEXT NOT NULL
                 )
             """)
-            cursor.execute("""
-                ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
-                 """)
 
             
             cursor.execute("""
@@ -57,19 +53,20 @@ def create_database():
                     UNIQUE (doctor_id, patient_code)
                 )
             """)
-            
             cursor.execute("""
                 ALTER TABLE predictions
-                ADD COLUMN IF NOT EXISTS patient_id INTEGER
-                REFERENCES patients(id)
+                  ADD COLUMN IF NOT EXISTS patient_id INTEGER
+                   REFERENCES patients(id)
             """)
-
+            
             cursor.execute("""
-                ALTER TABLE patients
-                ADD COLUMN IF NOT EXISTS visit_date DATE
-                """)
-
-
+                 ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
+            """)
+            cursor.execute("""
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+           """)
 def save_prediction_to_db(
     user_id, condition, result, risk, timestamp, inputs, patient_id=None
 ):
@@ -101,56 +98,34 @@ def save_prediction_to_db(
             )
 
 
-
 def get_user_predictions(user_id):
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT
-                    p.id,
-                    p.condition_name,
-                    p.result,
-                    p.risk,
-                    p.timestamp,
-                    p.inputs_json,
-                    p.patient_id,
-                    pt.name,
-                    pt.patient_code,
-                    pt.age,
-                    pt.sex,
-                    pt.contact
-                FROM predictions p
-                LEFT JOIN patients pt
-                    ON p.patient_id = pt.id
-                WHERE p.user_id = %s
-                ORDER BY p.timestamp DESC
+                SELECT condition_name, result, risk, timestamp, inputs_json, patient_id
+                FROM predictions
+                WHERE user_id = %s
+                ORDER BY timestamp DESC
                 """,
                 (user_id,),
             )
             rows = cursor.fetchall()
 
     records = []
-
-    for row in rows:
+    for cond, result, risk, timestamp, inputs_json, patient_id in rows:
         try:
-            inputs = json.loads(row[5]) if row[5] else {}
+            inputs = json.loads(inputs_json) if inputs_json else {}
         except (TypeError, ValueError):
             inputs = {}
 
         records.append({
-            "id": row[0],
-            "condition": row[1],
-            "result": row[2],
-            "risk": row[3],
-            "timestamp": row[4],
+            "condition": cond,
+            "result": result,
+            "risk": risk,
+            "timestamp": timestamp,
             "inputs": inputs,
-            "patient_id": row[6],
-            "patient_name": row[7] or "Unknown Patient",
-            "patient_code": row[8] or "N/A",
-            "age": row[9],
-            "sex": row[10] or "N/A",
-            "contact": row[11] or "N/A",
+            "patient_id": patient_id,
         })
 
     return records
@@ -165,19 +140,15 @@ def clear_user_predictions(user_id):
             )
 
 
-def create_patient(
-    doctor_id, patient_code, name, age, sex,
-    visit_date, contact=""
-):
+def create_patient(doctor_id, patient_code, name, age, sex, contact=""):
     try:
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO patients
-                    (doctor_id, patient_code, name, age, sex,
-                     visit_date, contact)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (doctor_id, patient_code, name, age, sex, contact)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (
                         doctor_id,
@@ -185,17 +156,15 @@ def create_patient(
                         name.strip(),
                         age,
                         sex,
-                        visit_date,
                         contact.strip(),
                     ),
                 )
-
-        return True, "Patient saved successfully."
+        return True, "Patient registered successfully."
 
     except Exception as e:
         if "unique" in str(e).lower():
             return False, "This patient code is already registered."
-        return False, f"Could not save patient: {e}"
+        return False, f"Could not register patient: {e}"
 
 
 def get_patients(doctor_id):
@@ -203,15 +172,7 @@ def get_patients(doctor_id):
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT
-                    id,
-                    patient_code,
-                    name,
-                    age,
-                    sex,
-                    contact,
-                    created_at,
-                    visit_date
+                SELECT id, patient_code, name, age, sex, contact, created_at
                 FROM patients
                 WHERE doctor_id = %s
                 ORDER BY name
@@ -221,6 +182,7 @@ def get_patients(doctor_id):
             rows = cursor.fetchall()
 
     return [
+        
         {
             "id": row[0],
             "patient_code": row[1],
@@ -229,57 +191,69 @@ def get_patients(doctor_id):
             "sex": row[4],
             "contact": row[5],
             "created_at": row[6],
-            "visit_date": row[7],
         }
         for row in rows
     ]
+def get_or_create_patient(doctor_id, name, age, sex, contact=""):
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                # Check whether this patient already exists
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM patients
+                    WHERE doctor_id = %s
+                    AND name = %s
+                    AND age = %s
+                    AND sex = %s
+                    AND contact = %s
+                    LIMIT 1
+                    """,
+                    (doctor_id, name.strip(), age, sex, contact.strip()),
+                )
 
-def get_or_create_patient(doctor_id, name, age, sex, contact):
-    contact = contact.strip()
+                patient = cursor.fetchone()
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
+                if patient:
+                    return patient[0]
 
-            # Check whether this patient already exists
-            cursor.execute(
-                """
-                SELECT id
-                FROM patients
-                WHERE doctor_id = %s AND contact = %s
-                LIMIT 1
-                """,
-                (doctor_id, contact),
-            )
+                # Generate a patient code
+                cursor.execute(
+                    """
+                    SELECT COALESCE(MAX(id), 0) + 1
+                    FROM patients
+                    """
+                )
+                next_id = cursor.fetchone()[0]
+                patient_code = f"P{next_id:04d}"
 
-            existing_patient = cursor.fetchone()
+                cursor.execute(
+                    """
+                    INSERT INTO patients
+                    (doctor_id, patient_code, name, age, sex, contact)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        doctor_id,
+                        patient_code,
+                        name.strip(),
+                        age,
+                        sex,
+                        contact.strip(),
+                    ),
+                )
 
-            if existing_patient:
-                return existing_patient[0]
+                return cursor.fetchone()[0]
 
-            # Create a new patient if not found
-            import uuid
-            patient_code = "PAT-" + uuid.uuid4().hex[:10].upper()
-
-            cursor.execute(
-                """
-                INSERT INTO patients
-                (doctor_id, patient_code, name, age, sex, contact, visit_date)
-                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE)
-                RETURNING id
-                """,
-                (doctor_id, patient_code, name, age, sex, contact),
-            )
-
-            new_patient = cursor.fetchone()
-
-            return new_patient[0]
-
-
+    except Exception as e:
+        raise Exception(f"Could not get or create patient: {e}")
 def get_all_users():
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT id, name, email
+                SELECT id, name, email, role, status
                 FROM users
                 ORDER BY id
             """)
@@ -290,10 +264,76 @@ def get_all_users():
             "id": row[0],
             "name": row[1],
             "email": row[2],
+            "role": row[3],
+            "status": row[4],
         }
         for row in rows
     ]
+def update_user(user_id, name, email, role):
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users
+                    SET name = %s, email = %s, role = %s
+                    WHERE id = %s
+                """, (name.strip(), email.strip(), role, user_id))
 
+        return True, "User updated successfully."
+
+    except Exception as e:
+        if "unique" in str(e).lower():
+            return False, "This email is already registered."
+        return False, f"Could not update user: {e}"
+
+
+def update_user_status(user_id, status):
+    if status not in ("active", "frozen", "revoked"):
+        return False, "Invalid account status."
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users
+                    SET status = %s
+                    WHERE id = %s
+                """, (status, user_id))
+
+        return True, f"User status changed to {status}."
+
+    except Exception as e:
+        return False, f"Could not update status: {e}"
+
+
+def delete_user(user_id):
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        (SELECT COUNT(*) FROM predictions WHERE user_id = %s)
+                        +
+                        (SELECT COUNT(*) FROM patients WHERE doctor_id = %s)
+                """, (user_id, user_id))
+
+                linked_records = cursor.fetchone()[0]
+
+                if linked_records > 0:
+                    return False, (
+                        "Cannot delete this account because it has linked "
+                        "patient or prediction records. Revoke access instead."
+                    )
+
+                cursor.execute(
+                    "DELETE FROM users WHERE id = %s",
+                    (user_id,)
+                )
+
+        return True, "User deleted successfully."
+
+    except Exception as e:
+        return False, f"Could not delete user: {e}"
 
 def get_all_predictions():
     with get_connection() as conn:
