@@ -165,7 +165,7 @@ def login_user(email, password):
 
             cursor.execute(
                 """
-                SELECT id, name, email, role, password
+                SELECT id, name, email, role, password, status
                 FROM users
                 WHERE LOWER(email) = %s
                 """,
@@ -177,7 +177,11 @@ def login_user(email, password):
             if not user:
                 return None
 
-            user_id, name, email, role, stored_hash = user
+            user_id, name, email, role, stored_hash, status = user
+
+            # Only active accounts can log in
+            if status != "active":
+                return None
 
             if not verify_password(password, stored_hash):
                 return None
@@ -196,5 +200,5 @@ def login_user(email, password):
                     (new_hash, user_id)
                 )
 
-            # Return the existing four-field login format
+            # Keep the existing four-field login format
             return user_id, name, email, role
