@@ -184,8 +184,6 @@ def login_user(email, password):
             if not verify_password(password, stored_hash):
                 return None
 
-<<<<<<< HEAD
-=======
             # Normalize account status
             status = (status or "").strip().lower()
 
@@ -194,7 +192,6 @@ def login_user(email, password):
                 return {
                     "account_status": status
                 }
->>>>>>> origin/dev2
 
             # Upgrade legacy SHA-256 hashes after successful login
             if not stored_hash.startswith("pbkdf2_sha256$"):

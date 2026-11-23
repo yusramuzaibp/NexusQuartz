@@ -266,7 +266,6 @@ def show_auth_page():
             </div>
         """)
 
-
     # ================= RIGHT LOGIN SECTION =================
 
     if "auth_view" not in st.session_state:
@@ -324,18 +323,31 @@ def show_auth_page():
                 ):
 
                     if not email or not password:
-                        st.warning("Please enter your email and password.")
+                        st.warning(
+                            "Please enter your email and password."
+                        )
 
                     else:
                         try:
                             user = login_user(email, password)
 
-                            if user:
+                            if (
+                                isinstance(user, dict)
+                                and "account_status" in user
+                            ):
+                                st.error(
+                                    f"Your account is currently "
+                                    f"{user['account_status']}. "
+                                    "Please contact the administrator."
+                                )
+
+                            elif user:
                                 st.session_state.logged_in = True
                                 st.session_state.user_id = user[0]
                                 st.session_state.user_name = user[1]
+                                st.session_state.user_email = user[2]
                                 st.session_state.user_role = user[3]
-
+                                
                                 st.session_state.history = (
                                     get_user_predictions(user[0])
                                 )
@@ -344,7 +356,9 @@ def show_auth_page():
                                 st.rerun()
 
                             else:
-                                st.error("Invalid email or password.")
+                                st.error(
+                                    "Invalid email or password."
+                                )
 
                         except Exception as e:
                             st.error(f"Login failed: {e}")
@@ -382,7 +396,10 @@ def show_auth_page():
                     </div>
                 """)
 
-                if st.button("← Back to Login", key="signup_back"):
+                if st.button(
+                    "← Back to Login",
+                    key="signup_back"
+                ):
                     st.session_state.auth_view = "login"
                     st.rerun()
 
@@ -492,7 +509,10 @@ def show_auth_page():
                     </div>
                 """)
 
-                if st.button("← Back to Login", key="reset_back"):
+                if st.button(
+                    "← Back to Login",
+                    key="reset_back"
+                ):
                     st.session_state.auth_view = "login"
                     st.rerun()
 
@@ -511,10 +531,14 @@ def show_auth_page():
                 ):
 
                     if not reset_email:
-                        st.warning("Please enter your registered email.")
+                        st.warning(
+                            "Please enter your registered email."
+                        )
 
                     elif not email_exists(reset_email):
-                        st.error("No account found with this email.")
+                        st.error(
+                            "No account found with this email."
+                        )
 
                     else:
                         otp = f"{secrets.randbelow(1000000):06d}"
@@ -538,11 +562,13 @@ def show_auth_page():
                         st.success("OTP generated successfully!")
 
                 # Display OTP in local development mode
+
                 if st.session_state.get("dev_reset_otp"):
                     st.info(
                         f"Development OTP: "
                         f"{st.session_state.dev_reset_otp}"
                     )
+
                     st.caption("This OTP expires in 5 minutes.")
 
                 # ================= VERIFY OTP =================
@@ -568,7 +594,9 @@ def show_auth_page():
                             st.warning("Please enter the OTP.")
 
                         elif time.time() > st.session_state.reset_otp_expiry:
-                            st.error("OTP expired. Generate a new one.")
+                            st.error(
+                                "OTP expired. Generate a new one."
+                            )
 
                         elif st.session_state.reset_otp_attempts >= 5:
                             st.error(
@@ -586,20 +614,29 @@ def show_auth_page():
                                 st.session_state.reset_otp_hash
                             ):
                                 st.session_state.reset_otp_verified = True
-                                st.success("OTP verified successfully!")
+                                st.success(
+                                    "OTP verified successfully!"
+                                )
 
                             else:
                                 st.session_state.reset_otp_attempts += 1
-                                st.error("Incorrect OTP. Please try again.")
+                                st.error(
+                                    "Incorrect OTP. Please try again."
+                                )
 
                 # ================= CREATE NEW PASSWORD =================
 
-                if st.session_state.get("reset_otp_verified", False):
+                if st.session_state.get(
+                    "reset_otp_verified",
+                    False
+                ):
 
                     if time.time() > st.session_state.reset_otp_expiry:
 
                         st.session_state.reset_otp_verified = False
-                        st.error("OTP expired. Generate a new one.")
+                        st.error(
+                            "OTP expired. Generate a new one."
+                        )
 
                     else:
 
@@ -624,7 +661,10 @@ def show_auth_page():
                             key="reset_password_button"
                         ):
 
-                            if not new_password or not confirm_password:
+                            if (
+                                not new_password
+                                or not confirm_password
+                            ):
                                 st.warning(
                                     "Please fill in both password fields."
                                 )
@@ -663,7 +703,8 @@ def show_auth_page():
                                                 "confirm_reset_password"
                                             ]:
                                                 st.session_state.pop(
-                                                    key, None
+                                                    key,
+                                                    None
                                                 )
 
                                             st.session_state.auth_view = "login"

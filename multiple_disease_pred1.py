@@ -40,6 +40,7 @@ from dashboard import show_dashboard
 
 from app_modules.patient_reports import show_patient_reports
 from app_modules.find_specialist import show_find_specialist
+from app_modules.profile import show_profile
 from admin.admin import (
     show_admin_dashboard,
     show_manage_users,
@@ -132,6 +133,11 @@ apply_global_styles()
 
 # Sidebar Navigation
 selected = show_navigation()
+
+# ================= PROFILE PAGE =================
+if selected == "Profile":
+    show_profile()
+    st.stop()
 # ---------------------------------------------------------------------
 # Admin pages
 # ---------------------------------------------------------------------
