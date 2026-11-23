@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 
 from database.database import (
+    get_connection,
     get_all_users,
     get_all_predictions,
     update_user,
@@ -12,7 +13,71 @@ from database.database import (
 )
 
 
+# ================= ADMIN ACCESS SECURITY =================
+
+def require_admin():
+    """Verify login, active status, and admin role directly from Neon."""
+
+    if not st.session_state.get("logged_in", False):
+        st.error("Access denied. Please log in first.")
+        st.stop()
+
+    user_id = st.session_state.get("user_id")
+
+    if not user_id:
+        st.error("Access denied. Invalid user session.")
+        st.stop()
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT role, status
+                    FROM users
+                    WHERE id = %s
+                    """,
+                    (user_id,)
+                )
+
+                user = cursor.fetchone()
+
+    except Exception:
+        st.error(
+            "Unable to verify admin access. Please try again."
+        )
+        st.stop()
+
+    if not user:
+        st.error("Access denied. User account not found.")
+        st.stop()
+
+    role, status = user
+
+    role = (role or "").strip().lower()
+    status = (status or "").strip().lower()
+
+    if status != "active":
+        st.error(
+            "Access denied. Your account is not active."
+        )
+        st.stop()
+
+    if role != "admin":
+        st.error(
+            "Access denied. Admin privileges are required."
+        )
+        st.stop()
+
+    return True
+
+
+# ================= ADMIN DASHBOARD =================
+
 def show_admin_dashboard():
+
+    require_admin()
+
     st.title("🛡️ Admin Dashboard")
     st.write("Welcome to the system administration panel.")
 
@@ -20,6 +85,7 @@ def show_admin_dashboard():
     try:
         users = get_all_users()
         predictions = get_all_predictions()
+
     except Exception as e:
         st.error(f"Could not load dashboard data: {e}")
         return
@@ -32,6 +98,7 @@ def show_admin_dashboard():
 
     # Calculate statistics
     if not predictions_df.empty:
+
         high_risk = (
             predictions_df["risk"]
             .astype(str).str.strip().str.lower() == "high"
@@ -41,6 +108,7 @@ def show_admin_dashboard():
             predictions_df["risk"]
             .astype(str).str.strip().str.lower() == "low"
         ).sum()
+
     else:
         high_risk = 0
         low_risk = 0
@@ -98,6 +166,7 @@ def show_admin_dashboard():
         chart_col1, chart_col2 = st.columns(2)
 
         with chart_col1:
+
             st.markdown("#### Predictions by Disease")
 
             disease_fig = px.bar(
@@ -147,6 +216,7 @@ def show_admin_dashboard():
             )
 
         with chart_col2:
+
             st.markdown("#### Risk Distribution")
 
             risk_fig = px.bar(
@@ -239,13 +309,19 @@ def show_admin_dashboard():
             use_container_width=True,
             hide_index=True
         )
+
     else:
         st.info("No registered users found.")
 
     st.divider()
 
 
+# ================= MANAGE USERS =================
+
 def show_manage_users():
+
+    require_admin()
+
     st.subheader("👥 Manage Users")
 
     users = get_all_users()
@@ -260,27 +336,32 @@ def show_manage_users():
     df = pd.DataFrame(users)
 
     def color_status(status):
+
         if status == "active":
             return (
                 "background-color: #D9F2E3;"
                 "color: #166534;"
                 "font-weight: bold;"
             )
+
         elif status == "frozen":
             return (
                 "background-color: #DCEEFF;"
                 "color: #1E40AF;"
                 "font-weight: bold;"
             )
+
         elif status == "revoked":
             return (
                 "background-color: #FEE2E2;"
                 "color: #991B1B;"
                 "font-weight: bold;"
             )
+
         return ""
 
     if "status" in df.columns:
+
         styled_df = df.style.map(
             color_status,
             subset=["status"]
@@ -291,7 +372,9 @@ def show_manage_users():
             use_container_width=True,
             hide_index=True
         )
+
     else:
+
         st.dataframe(
             df,
             use_container_width=True,
@@ -301,16 +384,23 @@ def show_manage_users():
     # PDF download
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Table,
+        TableStyle
+    )
     from io import BytesIO
 
     pdf_buffer = BytesIO()
+
     pdf = SimpleDocTemplate(
         pdf_buffer,
         pagesize=landscape(A4)
     )
 
-    table_data = [["ID", "Name", "Email", "Role", "Status"]]
+    table_data = [
+        ["ID", "Name", "Email", "Role", "Status"]
+    ]
 
     for user in users:
         table_data.append([
@@ -341,6 +431,7 @@ def show_manage_users():
     )
 
     st.divider()
+
     st.subheader("Manage Individual Accounts")
 
     selected_id = st.selectbox(
@@ -356,6 +447,7 @@ def show_manage_users():
 
     # Edit User
     with st.expander("✏️ Edit User"):
+
         new_name = st.text_input(
             "Name",
             value=selected_user["name"],
@@ -376,6 +468,7 @@ def show_manage_users():
         )
 
         if st.button("Save Changes"):
+
             success, message = update_user(
                 selected_id,
                 new_name,
@@ -386,6 +479,7 @@ def show_manage_users():
             if success:
                 st.session_state["user_update_message"] = message
                 st.rerun()
+
             else:
                 st.error(message)
 
@@ -395,19 +489,24 @@ def show_manage_users():
 
     # Display account status
     if selected_user["status"] == "frozen":
+
         st.info("❄️ Account status: FROZEN")
 
     elif selected_user["status"] == "revoked":
+
         st.error("🚫 Account status: REVOKED")
 
     else:
+
         st.success("🟢 Account status: ACTIVE")
 
     # Account management buttons
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
+
         if st.button("❄️ Freeze"):
+
             success, message = update_user_status(
                 selected_id, "frozen"
             )
@@ -415,11 +514,14 @@ def show_manage_users():
             if success:
                 st.success(message)
                 st.rerun()
+
             else:
                 st.error(message)
 
     with col2:
+
         if st.button("🔓 Unfreeze"):
+
             success, message = update_user_status(
                 selected_id, "active"
             )
@@ -427,11 +529,14 @@ def show_manage_users():
             if success:
                 st.success(message)
                 st.rerun()
+
             else:
                 st.error(message)
 
     with col3:
+
         if st.button("🚫 Revoke Access"):
+
             success, message = update_user_status(
                 selected_id, "revoked"
             )
@@ -439,11 +544,14 @@ def show_manage_users():
             if success:
                 st.success(message)
                 st.rerun()
+
             else:
                 st.error(message)
 
     with col4:
+
         if st.button("🔑 Grant Access"):
+
             success, message = update_user_status(
                 selected_id, "active"
             )
@@ -451,6 +559,7 @@ def show_manage_users():
             if success:
                 st.success("Access granted successfully.")
                 st.rerun()
+
             else:
                 st.error(message)
 
@@ -463,33 +572,124 @@ def show_manage_users():
     )
 
     if st.button("🗑️ Delete User", type="primary"):
+
         if confirm_delete:
-            success, message = delete_user(selected_id)
+
+            success, message = delete_user(
+                selected_id,
+                st.session_state.user_id
+            )
 
             if success:
                 st.success(message)
                 st.rerun()
+
             else:
                 st.error(message)
+
         else:
             st.warning("Please confirm before deleting.")
 
 
+# ================= ALL PREDICTION RECORDS =================
+
 def show_all_predictions():
+
+    require_admin()
+
     st.title("📋 All Prediction Records")
     st.write("View prediction records from all registered users.")
 
     predictions = get_all_predictions()
 
     if predictions:
+
         predictions_df = pd.DataFrame(predictions)
 
-        st.metric("Total Predictions", len(predictions))
+        # Convert timestamp into datetime format
+        predictions_df["timestamp"] = pd.to_datetime(
+            predictions_df["timestamp"],
+            errors="coerce"
+        )
+
+        st.metric("Total Predictions", len(predictions_df))
+
+        st.subheader("Filter Prediction Records")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            diseases = ["All"] + sorted(
+                predictions_df["condition"].dropna().unique().tolist()
+            )
+
+            selected_disease = st.selectbox(
+                "Filter by Disease",
+                diseases
+            )
+
+        with col2:
+
+            risks = ["All"] + sorted(
+                predictions_df["risk"].dropna().unique().tolist()
+            )
+
+            selected_risk = st.selectbox(
+                "Filter by Risk",
+                risks
+            )
+
+        with col3:
+
+            valid_dates = predictions_df["timestamp"].dropna()
+
+            if not valid_dates.empty:
+
+                min_date = valid_dates.min().date()
+                max_date = valid_dates.max().date()
+
+                selected_dates = st.date_input(
+                    "Filter by Date",
+                    value=(min_date, max_date),
+                    min_value=min_date,
+                    max_value=max_date
+                )
+
+            else:
+                selected_dates = ()
+
+        filtered_df = predictions_df.copy()
+
+        if selected_disease != "All":
+
+            filtered_df = filtered_df[
+                filtered_df["condition"] == selected_disease
+            ]
+
+        if selected_risk != "All":
+
+            filtered_df = filtered_df[
+                filtered_df["risk"] == selected_risk
+            ]
+
+        if len(selected_dates) == 2:
+
+            start_date, end_date = selected_dates
+
+            filtered_df = filtered_df[
+                (filtered_df["timestamp"].dt.date >= start_date)
+                & (filtered_df["timestamp"].dt.date <= end_date)
+            ]
+
+        st.metric("Filtered Predictions", len(filtered_df))
 
         st.dataframe(
-            predictions_df,
-            use_container_width=True,
+            filtered_df,
+            width="stretch",
             hide_index=True
         )
+
     else:
+
         st.info("No prediction records found.")

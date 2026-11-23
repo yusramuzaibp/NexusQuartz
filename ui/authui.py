@@ -288,6 +288,7 @@ def show_auth_page():
                 ["🔐 Login", "📝 Sign Up"]
             )
 
+            
             # ================= LOGIN =================
 
             with login_tab:
@@ -324,7 +325,40 @@ def show_auth_page():
 
                             user = login_user(email, password)
 
-                            if user:
+                            if user is None:
+
+                                st.error(
+                                    "❌ Invalid email or password."
+                                )
+
+                            elif isinstance(user, dict):
+
+                                account_status = user.get(
+                                    "account_status", ""
+                                ).strip().lower()
+
+                                if account_status == "frozen":
+
+                                    st.error(
+                                        "🔒 Your account is frozen. "
+                                        "Please contact the administrator."
+                                    )
+
+                                elif account_status == "revoked":
+
+                                    st.error(
+                                        "🚫 Your account access has been revoked. "
+                                        "Please contact the administrator."
+                                    )
+
+                                else:
+
+                                    st.error(
+                                        "⚠️ Your account is inactive. "
+                                        "Please contact the administrator."
+                                    )
+
+                            else:
 
                                 st.session_state.logged_in = True
                                 st.session_state.user_id = user[0]
@@ -338,122 +372,6 @@ def show_auth_page():
                                 st.success("✅ Login successful!")
                                 st.rerun()
 
-                            else:
-
-                                st.error(
-                                    "❌ Invalid email or password."
-                                )
-
                         except Exception as e:
 
                             st.error(f"Login failed: {e}")
-
-            # ================= SIGNUP =================
-
-            with signup_tab:
-
-                st.subheader("Create Your Account")
-
-                name = st.text_input(
-                    "Full Name",
-                    placeholder="Enter your name",
-                    key="signup_name"
-                )
-
-                email = st.text_input(
-                    "Email",
-                    placeholder="Enter your email",
-                    key="signup_email"
-                )
-
-                password = st.text_input(
-                    "Password",
-                    type="password",
-                    placeholder="Create a password",
-                    key="signup_password"
-                )
-
-                confirm_password = st.text_input(
-                    "Confirm Password",
-                    type="password",
-                    placeholder="Confirm your password",
-                    key="confirm_password"
-                )
-
-                st.caption(
-                    "Password must contain 8+ characters, "
-                    "uppercase, lowercase, number and special character."
-                )
-
-                if st.button(
-                    "📝 Create Account",
-                    use_container_width=True
-                ):
-
-                    if (
-                        not name
-                        or not email
-                        or not password
-                        or not confirm_password
-                    ):
-
-                        st.warning(
-                            "⚠️ Please fill in all fields."
-                        )
-
-                    elif password != confirm_password:
-
-                        st.error("❌ Passwords do not match.")
-
-                    else:
-
-                        password_errors = validate_password(password)
-
-                        if password_errors:
-
-                            st.error(
-                                "❌ Your password does not meet the requirements."
-                            )
-
-                            st.markdown(
-                                "**Please fix the following:**"
-                            )
-
-                            for error in password_errors:
-                                st.write(f"• {error}")
-
-                        else:
-
-                            try:
-
-                                result = create_user(
-                                    name,
-                                    email,
-                                    password
-                                )
-
-                                if result:
-
-                                    st.success(
-                                        "✅ Account created successfully!"
-                                    )
-
-                                    st.info(
-                                        "You can now go to the Login tab and log in."
-                                    )
-
-                                else:
-
-                                    st.error(
-                                        "❌ An account with this email already exists."
-                                    )
-
-                            except ValueError as e:
-
-                                st.error(str(e))
-
-                            except Exception as e:
-
-                                st.error(
-                                    f"Unable to create your account: {e}"
-                                )
