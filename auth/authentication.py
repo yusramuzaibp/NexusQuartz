@@ -186,6 +186,7 @@ def login_user(email, password):
             if not verify_password(password, stored_hash):
                 return None
 
+
             # Upgrade legacy SHA-256 hashes after successful login
             if not stored_hash.startswith("pbkdf2_sha256$"):
 
@@ -200,9 +201,9 @@ def login_user(email, password):
                     (new_hash, user_id)
                 )
 
-<<<<<<< HEAD
             # Return the existing four-field login format
             return user_id, name, email, role
+
 
 # ================= RESET PASSWORD =================
 
@@ -232,11 +233,17 @@ def reset_password(email, new_password):
             )
 
             return cursor.rowcount > 0
+
+
+# ================= CHECK EMAIL EXISTS =================
+
 def email_exists(email):
+
     email = email.strip().lower()
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
+
             cursor.execute(
                 """
                 SELECT 1
@@ -246,8 +253,5 @@ def email_exists(email):
                 """,
                 (email,)
             )
+
             return cursor.fetchone() is not None
-=======
-            # Keep the existing four-field login format
-            return user_id, name, email, role
->>>>>>> origin/dev2

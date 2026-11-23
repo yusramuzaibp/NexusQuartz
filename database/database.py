@@ -2,6 +2,7 @@ import os
 import json
 import psycopg
 from dotenv import load_dotenv
+import uuid
 
 load_dotenv()
 
@@ -97,35 +98,55 @@ def save_prediction_to_db(
                 ),
             )
 
-
 def get_user_predictions(user_id):
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT condition_name, result, risk, timestamp, inputs_json, patient_id
-                FROM predictions
-                WHERE user_id = %s
-                ORDER BY timestamp DESC
+                SELECT
+                    p.id,
+                    p.condition_name,
+                    p.result,
+                    p.risk,
+                    p.timestamp,
+                    p.inputs_json,
+                    p.patient_id,
+                    pt.name,
+                    pt.patient_code,
+                    pt.age,
+                    pt.sex,
+                    pt.contact
+                FROM predictions p
+                LEFT JOIN patients pt
+                    ON p.patient_id = pt.id
+                WHERE p.user_id = %s
+                ORDER BY p.timestamp DESC
                 """,
                 (user_id,),
             )
             rows = cursor.fetchall()
 
     records = []
-    for cond, result, risk, timestamp, inputs_json, patient_id in rows:
+
+    for row in rows:
         try:
-            inputs = json.loads(inputs_json) if inputs_json else {}
+            inputs = json.loads(row[5]) if row[5] else {}
         except (TypeError, ValueError):
             inputs = {}
 
         records.append({
-            "condition": cond,
-            "result": result,
-            "risk": risk,
-            "timestamp": timestamp,
+            "id": row[0],
+            "condition": row[1],
+            "result": row[2],
+            "risk": row[3],
+            "timestamp": row[4],
             "inputs": inputs,
-            "patient_id": patient_id,
+            "patient_id": row[6],
+            "patient_name": row[7] or "Unknown Patient",
+            "patient_code": row[8] or "N/A",
+            "age": row[9],
+            "sex": row[10] or "N/A",
+            "contact": row[11] or "N/A",
         })
 
     return records
@@ -194,10 +215,12 @@ def get_patients(doctor_id):
         }
         for row in rows
     ]
+
 def get_or_create_patient(doctor_id, name, age, sex, contact=""):
     try:
         with get_connection() as conn:
             with conn.cursor() as cursor:
+
                 # Check whether this patient already exists
                 cursor.execute(
                     """
@@ -218,15 +241,8 @@ def get_or_create_patient(doctor_id, name, age, sex, contact=""):
                 if patient:
                     return patient[0]
 
-                # Generate a patient code
-                cursor.execute(
-                    """
-                    SELECT COALESCE(MAX(id), 0) + 1
-                    FROM patients
-                    """
-                )
-                next_id = cursor.fetchone()[0]
-                patient_code = f"P{next_id:04d}"
+                # Insert a new patient with a temporary unique code
+                temp_code = f"TEMP-{uuid.uuid4()}"
 
                 cursor.execute(
                     """
@@ -237,7 +253,7 @@ def get_or_create_patient(doctor_id, name, age, sex, contact=""):
                     """,
                     (
                         doctor_id,
-                        patient_code,
+                        temp_code,
                         name.strip(),
                         age,
                         sex,
@@ -245,10 +261,25 @@ def get_or_create_patient(doctor_id, name, age, sex, contact=""):
                     ),
                 )
 
-                return cursor.fetchone()[0]
+                patient_id = cursor.fetchone()[0]
+
+                # Generate globally unique patient code from database ID
+                patient_code = f"P{patient_id:04d}"
+
+                cursor.execute(
+                    """
+                    UPDATE patients
+                    SET patient_code = %s
+                    WHERE id = %s
+                    """,
+                    (patient_code, patient_id),
+                )
+
+                return patient_id
 
     except Exception as e:
         raise Exception(f"Could not get or create patient: {e}")
+
 def get_all_users():
     with get_connection() as conn:
         with conn.cursor() as cursor:
