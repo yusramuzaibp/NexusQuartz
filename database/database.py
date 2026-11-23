@@ -68,6 +68,10 @@ def create_database():
                 ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
            """)
+            cursor.execute("""
+               ALTER TABLE users
+               ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+       """)
 def save_prediction_to_db(
     user_id, condition, result, risk, timestamp, inputs, patient_id=None
 ):
@@ -284,9 +288,9 @@ def get_all_users():
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT id, name, email, role, status
+                SELECT id, name, email, role, status, created_at
                 FROM users
-                ORDER BY id
+                ORDER BY created_at DESC, id DESC
             """)
             rows = cursor.fetchall()
 
@@ -296,7 +300,8 @@ def get_all_users():
             "name": row[1],
             "email": row[2],
             "role": row[3],
-            "status": row[4],
+            "status": row[4], 
+            "created_at": row[5],
         }
         for row in rows
     ]
@@ -404,3 +409,21 @@ def get_all_predictions():
         })
 
     return records
+def check_user_ids():
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, name, email, role, status, created_at
+                FROM users
+                ORDER BY created_at DESC, id DESC 
+            """)
+            users = cursor.fetchall()
+
+            cursor.execute("""
+                SELECT DISTINCT user_id
+                FROM predictions
+                ORDER BY user_id
+            """)
+            prediction_users = cursor.fetchall()
+
+    return users, prediction_users
