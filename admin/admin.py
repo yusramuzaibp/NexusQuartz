@@ -1,6 +1,7 @@
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from database.database import (
     get_all_users,
@@ -9,6 +10,7 @@ from database.database import (
     update_user_status,
     delete_user,
 )
+
 
 def show_admin_dashboard():
     st.title("🛡️ Admin Dashboard")
@@ -65,25 +67,10 @@ def show_admin_dashboard():
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric(
-        "👥 Total Users",
-        total_users
-    )
-
-    col2.metric(
-        "📋 Total Predictions",
-        total_predictions
-    )
-
-    col3.metric(
-        "🔴 High Risk",
-        int(high_risk)
-    )
-
-    col4.metric(
-        "🟢 Low Risk",
-        int(low_risk)
-    )
+    col1.metric("👥 Total Users", total_users)
+    col2.metric("📋 Total Predictions", total_predictions)
+    col3.metric("🔴 High Risk", int(high_risk))
+    col4.metric("🟢 Low Risk", int(low_risk))
 
     st.divider()
 
@@ -95,30 +82,116 @@ def show_admin_dashboard():
         disease_counts = (
             predictions_df["condition"]
             .value_counts()
+            .reindex(
+                ["Diabetes", "Heart Disease", "Parkinsons"],
+                fill_value=0
+            )
             .rename_axis("Disease")
             .reset_index(name="Predictions")
         )
+
+        risk_counts = pd.DataFrame({
+            "Risk Level": ["High Risk", "Low Risk"],
+            "Predictions": [int(high_risk), int(low_risk)]
+        })
 
         chart_col1, chart_col2 = st.columns(2)
 
         with chart_col1:
             st.markdown("#### Predictions by Disease")
-            st.bar_chart(
-                disease_counts.set_index("Disease"),
-                color="#43899B"
+
+            disease_fig = px.bar(
+                disease_counts,
+                x="Disease",
+                y="Predictions",
+                color="Disease",
+                text="Predictions",
+                color_discrete_map={
+                    "Diabetes": "#43899B",
+                    "Heart Disease": "#5DA5A8",
+                    "Parkinsons": "#80B8B0"
+                },
+                template="plotly_white"
+            )
+
+            disease_fig.update_traces(
+                textposition="outside",
+                textfont=dict(size=14, color="#263B4A"),
+                marker_line_width=0
+            )
+
+            disease_fig.update_layout(
+                height=420,
+                showlegend=False,
+                margin=dict(l=20, r=20, t=35, b=20),
+                xaxis_title="Disease",
+                yaxis_title="Number of Predictions",
+                yaxis=dict(
+                    rangemode="tozero",
+                    gridcolor="#E5EAF0",
+                    zeroline=False
+                ),
+                xaxis=dict(showgrid=False),
+                font=dict(
+                    family="Arial",
+                    size=13,
+                    color="#263B4A"
+                ),
+                plot_bgcolor="white",
+                paper_bgcolor="white"
+            )
+
+            st.plotly_chart(
+                disease_fig,
+                use_container_width=True
             )
 
         with chart_col2:
             st.markdown("#### Risk Distribution")
 
-            risk_counts = pd.DataFrame({
-                "Risk Level": ["High Risk", "Low Risk"],
-                "Predictions": [int(high_risk), int(low_risk)]
-            })
+            risk_fig = px.bar(
+                risk_counts,
+                x="Risk Level",
+                y="Predictions",
+                color="Risk Level",
+                text="Predictions",
+                color_discrete_map={
+                    "High Risk": "#D68B65",
+                    "Low Risk": "#43899B"
+                },
+                template="plotly_white"
+            )
 
-            st.bar_chart(
-                risk_counts.set_index("Risk Level"),
-                color="#D68B65"
+            risk_fig.update_traces(
+                textposition="outside",
+                textfont=dict(size=14, color="#263B4A"),
+                marker_line_width=0
+            )
+
+            risk_fig.update_layout(
+                height=420,
+                showlegend=False,
+                margin=dict(l=20, r=20, t=35, b=20),
+                xaxis_title="Risk Level",
+                yaxis_title="Number of Predictions",
+                yaxis=dict(
+                    rangemode="tozero",
+                    gridcolor="#E5EAF0",
+                    zeroline=False
+                ),
+                xaxis=dict(showgrid=False),
+                font=dict(
+                    family="Arial",
+                    size=13,
+                    color="#263B4A"
+                ),
+                plot_bgcolor="white",
+                paper_bgcolor="white"
+            )
+
+            st.plotly_chart(
+                risk_fig,
+                use_container_width=True
             )
 
         st.divider()
@@ -162,7 +235,7 @@ def show_admin_dashboard():
 
     if not users_df.empty:
         st.dataframe(
-            users_df.tail(5),
+            users_df.head(5),
             use_container_width=True,
             hide_index=True
         )
@@ -183,9 +256,47 @@ def show_manage_users():
         st.info("No users registered yet.")
         return
 
+    # Users table with coloured status cells
     df = pd.DataFrame(users)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    def color_status(status):
+        if status == "active":
+            return (
+                "background-color: #D9F2E3;"
+                "color: #166534;"
+                "font-weight: bold;"
+            )
+        elif status == "frozen":
+            return (
+                "background-color: #DCEEFF;"
+                "color: #1E40AF;"
+                "font-weight: bold;"
+            )
+        elif status == "revoked":
+            return (
+                "background-color: #FEE2E2;"
+                "color: #991B1B;"
+                "font-weight: bold;"
+            )
+        return ""
+
+    if "status" in df.columns:
+        styled_df = df.style.map(
+            color_status,
+            subset=["status"]
+        )
+
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True
+        )
 
     # PDF download
     from reportlab.lib import colors
@@ -194,7 +305,10 @@ def show_manage_users():
     from io import BytesIO
 
     pdf_buffer = BytesIO()
-    pdf = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4))
+    pdf = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=landscape(A4)
+    )
 
     table_data = [["ID", "Name", "Email", "Role", "Status"]]
 
@@ -208,6 +322,7 @@ def show_manage_users():
         ])
 
     table = Table(table_data, repeatRows=1)
+
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -239,17 +354,20 @@ def show_manage_users():
 
     st.write(f"**Selected:** {selected_user['name']}")
 
+    # Edit User
     with st.expander("✏️ Edit User"):
         new_name = st.text_input(
             "Name",
             value=selected_user["name"],
             key="edit_name",
         )
+
         new_email = st.text_input(
             "Email",
             value=selected_user["email"],
             key="edit_email",
         )
+
         new_role = st.selectbox(
             "Role",
             ["user", "admin"],
@@ -259,23 +377,41 @@ def show_manage_users():
 
         if st.button("Save Changes"):
             success, message = update_user(
-                selected_id, new_name, new_email, new_role
+                selected_id,
+                new_name,
+                new_email,
+                new_role
             )
+
             if success:
-                st.success(message)
+                st.session_state["user_update_message"] = message
                 st.rerun()
             else:
                 st.error(message)
 
-    st.write(f"**Account status:** {selected_user['status']}")
+        if "user_update_message" in st.session_state:
+            st.success(st.session_state["user_update_message"])
+            del st.session_state["user_update_message"]
 
-    col1, col2, col3 = st.columns(3)
+    # Display account status
+    if selected_user["status"] == "frozen":
+        st.info("❄️ Account status: FROZEN")
+
+    elif selected_user["status"] == "revoked":
+        st.error("🚫 Account status: REVOKED")
+
+    else:
+        st.success("🟢 Account status: ACTIVE")
+
+    # Account management buttons
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         if st.button("❄️ Freeze"):
             success, message = update_user_status(
                 selected_id, "frozen"
             )
+
             if success:
                 st.success(message)
                 st.rerun()
@@ -287,6 +423,7 @@ def show_manage_users():
             success, message = update_user_status(
                 selected_id, "active"
             )
+
             if success:
                 st.success(message)
                 st.rerun()
@@ -298,14 +435,28 @@ def show_manage_users():
             success, message = update_user_status(
                 selected_id, "revoked"
             )
+
             if success:
                 st.success(message)
                 st.rerun()
             else:
                 st.error(message)
 
+    with col4:
+        if st.button("🔑 Grant Access"):
+            success, message = update_user_status(
+                selected_id, "active"
+            )
+
+            if success:
+                st.success("Access granted successfully.")
+                st.rerun()
+            else:
+                st.error(message)
+
     st.divider()
 
+    # Delete User
     confirm_delete = st.checkbox(
         "I confirm that I want to delete this account.",
         key="confirm_delete",
@@ -314,6 +465,7 @@ def show_manage_users():
     if st.button("🗑️ Delete User", type="primary"):
         if confirm_delete:
             success, message = delete_user(selected_id)
+
             if success:
                 st.success(message)
                 st.rerun()

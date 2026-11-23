@@ -1,3 +1,4 @@
+
 import hashlib
 import hmac
 import secrets
@@ -179,12 +180,18 @@ def login_user(email, password):
 
             user_id, name, email, role, stored_hash, status = user
 
-            # Only active accounts can log in
-            if status != "active":
-                return None
-
+            # Verify password before revealing account status
             if not verify_password(password, stored_hash):
                 return None
+
+            # Normalize account status
+            status = (status or "").strip().lower()
+
+            # Reject frozen, revoked, or other inactive accounts
+            if status != "active":
+                return {
+                    "account_status": status
+                }
 
             # Upgrade legacy SHA-256 hashes after successful login
             if not stored_hash.startswith("pbkdf2_sha256$"):
