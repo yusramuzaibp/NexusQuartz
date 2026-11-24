@@ -4,15 +4,41 @@ import pandas as pd
 import plotly.express as px
 
 from database.database import (
+    get_connection,
     get_all_users,
     get_all_predictions,
     update_user,
     update_user_status,
     delete_user,
 )
+def require_admin():
+    user_id = st.session_state.get("user_id")
+    logged_in = st.session_state.get("logged_in", False)
+
+    if not logged_in or not user_id:
+        st.error("Please log in to access the admin panel.")
+        st.stop()
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT role, status FROM users WHERE id = %s",
+                    (user_id,)
+                )
+                account = cursor.fetchone()
+
+        if not account or account[0] != "admin" or account[1] != "active":
+            st.error("Access denied. Active administrator privileges required.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Could not verify administrator access: {e}")
+        st.stop()
 
 
 def show_admin_dashboard():
+    require_admin()
     st.title("🛡️ Admin Dashboard")
     st.write("Welcome to the system administration panel.")
 
@@ -246,6 +272,7 @@ def show_admin_dashboard():
 
 
 def show_manage_users():
+    require_admin()
     st.subheader("👥 Manage Users")
 
     users = get_all_users()
@@ -464,7 +491,10 @@ def show_manage_users():
 
     if st.button("🗑️ Delete User", type="primary"):
         if confirm_delete:
-            success, message = delete_user(selected_id)
+            success, message = delete_user(
+                selected_id,
+                st.session_state.user_id
+            )
 
             if success:
                 st.success(message)
@@ -476,20 +506,88 @@ def show_manage_users():
 
 
 def show_all_predictions():
+    require_admin()
+
     st.title("📋 All Prediction Records")
     st.write("View prediction records from all registered users.")
 
     predictions = get_all_predictions()
 
-    if predictions:
-        predictions_df = pd.DataFrame(predictions)
-
-        st.metric("Total Predictions", len(predictions))
-
-        st.dataframe(
-            predictions_df,
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
+    if not predictions:
         st.info("No prediction records found.")
+        return
+
+    predictions_df = pd.DataFrame(predictions)
+
+    st.metric("Total Predictions", len(predictions_df))
+
+    # Disease filter
+    diseases = ["All"] + sorted(
+        predictions_df["condition"].dropna().unique().tolist()
+    )
+
+    selected_disease = st.selectbox(
+        "Filter by Disease",
+        diseases
+    )
+
+    # Risk filter
+    risks = ["All"] + sorted(
+        predictions_df["risk"].dropna().unique().tolist()
+    )
+
+    selected_risk = st.selectbox(
+        "Filter by Risk",
+        risks
+    )
+
+    # Date filter
+    predictions_df["timestamp"] = pd.to_datetime(
+        predictions_df["timestamp"],
+        errors="coerce"
+    )
+
+    date_filter = st.checkbox("Filter by Date")
+
+    if date_filter:
+        valid_dates = predictions_df["timestamp"].dropna()
+
+        if not valid_dates.empty:
+            start_date = st.date_input(
+                "From Date",
+                value=valid_dates.min().date()
+            )
+
+            end_date = st.date_input(
+                "To Date",
+                value=valid_dates.max().date()
+            )
+
+            if start_date > end_date:
+                st.warning("Start date cannot be after end date.")
+                return
+
+            predictions_df = predictions_df[
+                predictions_df["timestamp"].dt.date.between(
+                    start_date, end_date
+                )
+            ]
+
+    # Apply disease and risk filters
+    if selected_disease != "All":
+        predictions_df = predictions_df[
+            predictions_df["condition"] == selected_disease
+        ]
+
+    if selected_risk != "All":
+        predictions_df = predictions_df[
+            predictions_df["risk"] == selected_risk
+        ]
+
+    st.write(f"Showing {len(predictions_df)} prediction records.")
+
+    st.dataframe(
+        predictions_df,
+        use_container_width=True,
+        hide_index=True
+    )

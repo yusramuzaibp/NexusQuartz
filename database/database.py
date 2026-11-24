@@ -341,11 +341,42 @@ def update_user_status(user_id, status):
     except Exception as e:
         return False, f"Could not update status: {e}"
 
-
-def delete_user(user_id):
+def delete_user(user_id, current_admin_id=None):
     try:
+        # Prevent an admin from deleting their own account
+        if current_admin_id is not None and str(user_id) == str(current_admin_id):
+            return False, "You cannot delete your own admin account."
+
         with get_connection() as conn:
             with conn.cursor() as cursor:
+
+                # Check whether the target user exists
+                cursor.execute(
+                    "SELECT role, status FROM users WHERE id = %s",
+                    (user_id,)
+                )
+                target_user = cursor.fetchone()
+
+                if not target_user:
+                    return False, "User account not found."
+
+                target_role, target_status = target_user
+
+                # Prevent deletion of the last active admin
+                if target_role == "admin" and target_status == "active":
+                    cursor.execute("""
+                        SELECT COUNT(*)
+                        FROM users
+                        WHERE role = 'admin' AND status = 'active'
+                    """)
+                    active_admins = cursor.fetchone()[0]
+
+                    if active_admins <= 1:
+                        return False, (
+                            "Cannot delete the last active admin account."
+                        )
+
+                # Preserve existing patient and prediction protection
                 cursor.execute("""
                     SELECT
                         (SELECT COUNT(*) FROM predictions WHERE user_id = %s)
@@ -361,16 +392,19 @@ def delete_user(user_id):
                         "patient or prediction records. Revoke access instead."
                     )
 
+                # Delete the account
                 cursor.execute(
                     "DELETE FROM users WHERE id = %s",
                     (user_id,)
                 )
 
+                if cursor.rowcount == 0:
+                    return False, "User account could not be deleted."
+
         return True, "User deleted successfully."
 
     except Exception as e:
         return False, f"Could not delete user: {e}"
-
 def get_all_predictions():
     with get_connection() as conn:
         with conn.cursor() as cursor:
