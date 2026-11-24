@@ -207,5 +207,57 @@ def login_user(email, password):
                     (new_hash, user_id)
                 )
 
-            # Keep the existing four-field login format
+            # Return the existing four-field login format
             return user_id, name, email, role
+
+
+# ================= RESET PASSWORD =================
+
+def reset_password(email, new_password):
+
+    errors = validate_password(new_password)
+
+    if errors:
+        raise ValueError(
+            "Password does not meet the requirements: "
+            + ", ".join(errors)
+        )
+
+    email = email.strip().lower()
+    new_hash = hash_password(new_password)
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET password = %s
+                WHERE LOWER(email) = %s
+                """,
+                (new_hash, email)
+            )
+
+            return cursor.rowcount > 0
+
+
+# ================= CHECK EMAIL EXISTS =================
+
+def email_exists(email):
+
+    email = email.strip().lower()
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+
+            cursor.execute(
+                """
+                SELECT 1
+                FROM users
+                WHERE LOWER(email) = %s
+                LIMIT 1
+                """,
+                (email,)
+            )
+
+            return cursor.fetchone() is not None

@@ -1,12 +1,17 @@
-
 import streamlit as st
 import base64
+import secrets
+import hashlib
+import hmac
+import time
 from pathlib import Path
 
 from auth.authentication import (
     create_user,
     login_user,
     validate_password,
+    reset_password,
+    email_exists
 )
 
 from database.database import get_user_predictions
@@ -59,8 +64,8 @@ def show_auth_page():
     .hero-card {{
         background: linear-gradient(
             145deg,
-            #BFECEF,
-            #DDF3F4
+            rgba(191, 236, 239, 0.75),
+            rgba(221, 243, 244, 0.75)
         );
 
         padding: 40px 30px;
@@ -108,7 +113,7 @@ def show_auth_page():
     /* ================= RIGHT LOGIN CARD ================= */
 
     .st-key-login-panel {{
-        background: rgba(239,247,250,0.96);
+        background: rgba(239,247,250,0.75);
         border: 1px solid rgba(255,255,255,0.9);
         border-radius: 22px;
         padding: 28px 30px;
@@ -145,7 +150,7 @@ def show_auth_page():
     /* ================= LOGIN BUTTON ================= */
 
     .st-key-login-panel div[data-testid="stButton"] button {{
-        background-color: #087E8B;
+        background-color: #35A6B2;
         color: #FFFFFF;
         border: none;
         border-radius: 10px;
@@ -155,7 +160,7 @@ def show_auth_page():
     }}
 
     .st-key-login-panel div[data-testid="stButton"] button:hover {{
-        background-color: #07566B;
+        background-color: #258D9A;
         color: #FFFFFF;
         transform: translateY(-2px);
     }}
@@ -224,13 +229,16 @@ def show_auth_page():
             <div class="hero-card">
 
                 <div class="hero-tag">
-                    🩺 Multiple Disease Prediction
+                    Nexuz Quartz
                 </div>
 
                 <h1>
-                    Your Health.<br>
-                    Our Intelligence.
+                    🩺 Multiple Disease Prediction
                 </h1>
+
+                <p style="font-style: italic; font-size: 19px;">
+                    Your Health. Our Intelligence.
+                </p>
 
                 <p>
                     Welcome to the Multiple Disease Prediction System.
@@ -260,43 +268,33 @@ def show_auth_page():
 
     # ================= RIGHT LOGIN SECTION =================
 
+    if "auth_view" not in st.session_state:
+        st.session_state.auth_view = "login"
+
     with right_col:
 
         with st.container(key="login-panel"):
 
-            st.html("""
-                <div style="padding: 5px 5px 10px 5px;">
+            # ================= LOGIN VIEW =================
 
-                    <h2 style="
-                        color:#07566B;
-                        margin-bottom:5px;
-                    ">
-                        Welcome Back
-                    </h2>
+            if st.session_state.auth_view == "login":
 
-                    <p style="
-                        color:#36525F;
-                        font-size:15px;
-                    ">
-                        Sign in or create an account to continue.
-                    </p>
-
-                </div>
-            """)
-
-            login_tab, signup_tab = st.tabs(
-                ["🔐 Login", "📝 Sign Up"]
-            )
-
-            
-            # ================= LOGIN =================
-
-            with login_tab:
-
-                st.subheader("Login to Your Account")
+                st.html("""
+                    <div style="padding: 5px 0 15px 0;">
+                        <div style="color:#087E8B; font-weight:700;">
+                            🔒 SECURE LOGIN
+                        </div>
+                        <h2 style="color:#07566B; margin-top:8px;">
+                            Welcome back
+                        </h2>
+                        <p style="color:#36525F;">
+                            Enter your credentials to access your health dashboard.
+                        </p>
+                    </div>
+                """)
 
                 email = st.text_input(
-                    "Email",
+                    "Email address",
                     placeholder="Enter your email",
                     key="login_email"
                 )
@@ -308,70 +306,416 @@ def show_auth_page():
                     key="login_password"
                 )
 
+                _, forgot_col = st.columns([2, 1])
+
+                with forgot_col:
+                    if st.button(
+                        "Forgot password?",
+                        key="open_forgot_password"
+                    ):
+                        st.session_state.auth_view = "reset"
+                        st.rerun()
+
                 if st.button(
-                    "🔐 Login",
-                    use_container_width=True
+                    "Sign In",
+                    use_container_width=True,
+                    key="login_button"
                 ):
 
                     if not email or not password:
-
                         st.warning(
-                            "⚠️ Please enter your email and password."
+                            "Please enter your email and password."
                         )
 
                     else:
-
                         try:
-
                             user = login_user(email, password)
 
-                            if user is None:
-
+                            if (
+                                isinstance(user, dict)
+                                and "account_status" in user
+                            ):
                                 st.error(
-                                    "❌ Invalid email or password."
+                                    f"Your account is currently "
+                                    f"{user['account_status']}. "
+                                    "Please contact the administrator."
                                 )
 
-                            elif isinstance(user, dict):
-
-                                account_status = user.get(
-                                    "account_status", ""
-                                ).strip().lower()
-
-                                if account_status == "frozen":
-
-                                    st.error(
-                                        "🔒 Your account is frozen. "
-                                        "Please contact the administrator."
-                                    )
-
-                                elif account_status == "revoked":
-
-                                    st.error(
-                                        "🚫 Your account access has been revoked. "
-                                        "Please contact the administrator."
-                                    )
-
-                                else:
-
-                                    st.error(
-                                        "⚠️ Your account is inactive. "
-                                        "Please contact the administrator."
-                                    )
-
-                            else:
-
+                            elif user:
                                 st.session_state.logged_in = True
                                 st.session_state.user_id = user[0]
                                 st.session_state.user_name = user[1]
+                                st.session_state.user_email = user[2]
                                 st.session_state.user_role = user[3]
-
+                                
                                 st.session_state.history = (
                                     get_user_predictions(user[0])
                                 )
 
-                                st.success("✅ Login successful!")
+                                st.success("Login successful!")
                                 st.rerun()
 
-                        except Exception as e:
+                            else:
+                                st.error(
+                                    "Invalid email or password."
+                                )
 
+                        except Exception as e:
                             st.error(f"Login failed: {e}")
+
+                st.markdown(
+                    "<div style='text-align:center; margin-top:20px; "
+                    "color:#36525F;'>"
+                    "Don't have an account?</div>",
+                    unsafe_allow_html=True
+                )
+
+                if st.button(
+                    "Create account",
+                    use_container_width=True,
+                    key="open_signup"
+                ):
+                    st.session_state.auth_view = "signup"
+                    st.rerun()
+
+            # ================= SIGNUP VIEW =================
+
+            elif st.session_state.auth_view == "signup":
+
+                st.html("""
+                    <div style="padding: 5px 0 15px 0;">
+                        <div style="color:#087E8B; font-weight:700;">
+                            ✨ JOIN US
+                        </div>
+                        <h2 style="color:#07566B; margin-top:8px;">
+                            Create your account
+                        </h2>
+                        <p style="color:#36525F;">
+                            Get started with your personal health dashboard.
+                        </p>
+                    </div>
+                """)
+
+                if st.button(
+                    "← Back to Login",
+                    key="signup_back"
+                ):
+                    st.session_state.auth_view = "login"
+                    st.rerun()
+
+                name = st.text_input(
+                    "Full Name",
+                    placeholder="Enter your name",
+                    key="signup_name"
+                )
+
+                email = st.text_input(
+                    "Email address",
+                    placeholder="Enter your email",
+                    key="signup_email"
+                )
+
+                password = st.text_input(
+                    "Password",
+                    type="password",
+                    placeholder="Create a password",
+                    key="signup_password"
+                )
+
+                confirm_password = st.text_input(
+                    "Confirm Password",
+                    type="password",
+                    placeholder="Confirm your password",
+                    key="confirm_password"
+                )
+
+                st.caption(
+                    "Password must contain 8+ characters, "
+                    "uppercase, lowercase, number and special character."
+                )
+
+                if st.button(
+                    "Create Account",
+                    use_container_width=True,
+                    key="signup_button"
+                ):
+
+                    if (
+                        not name
+                        or not email
+                        or not password
+                        or not confirm_password
+                    ):
+                        st.warning("Please fill in all fields.")
+
+                    elif password != confirm_password:
+                        st.error("Passwords do not match.")
+
+                    else:
+                        password_errors = validate_password(password)
+
+                        if password_errors:
+                            st.error(
+                                "Your password does not meet the requirements."
+                            )
+
+                            for error in password_errors:
+                                st.write(f"• {error}")
+
+                        else:
+                            try:
+                                result = create_user(
+                                    name,
+                                    email,
+                                    password
+                                )
+
+                                if result:
+                                    st.success(
+                                        "Account created successfully!"
+                                    )
+                                    st.session_state.auth_view = "login"
+                                    st.rerun()
+
+                                else:
+                                    st.error(
+                                        "An account with this email "
+                                        "already exists."
+                                    )
+
+                            except ValueError as e:
+                                st.error(str(e))
+
+                            except Exception as e:
+                                st.error(
+                                    f"Unable to create your account: {e}"
+                                )
+
+            # ================= FORGOT PASSWORD VIEW =================
+
+            elif st.session_state.auth_view == "reset":
+
+                st.html("""
+                    <div style="padding: 5px 0 15px 0;">
+                        <div style="color:#087E8B; font-weight:700;">
+                            🔑 ACCOUNT RECOVERY
+                        </div>
+                        <h2 style="color:#07566B; margin-top:8px;">
+                            Reset your password
+                        </h2>
+                        <p style="color:#36525F;">
+                            Verify your account and create a new password.
+                        </p>
+                    </div>
+                """)
+
+                if st.button(
+                    "← Back to Login",
+                    key="reset_back"
+                ):
+                    st.session_state.auth_view = "login"
+                    st.rerun()
+
+                reset_email = st.text_input(
+                    "Registered Email",
+                    placeholder="Enter your registered email",
+                    key="reset_email"
+                )
+
+                # ================= GENERATE OTP =================
+
+                if st.button(
+                    "Generate OTP",
+                    use_container_width=True,
+                    key="generate_otp"
+                ):
+
+                    if not reset_email:
+                        st.warning(
+                            "Please enter your registered email."
+                        )
+
+                    elif not email_exists(reset_email):
+                        st.error(
+                            "No account found with this email."
+                        )
+
+                    else:
+                        otp = f"{secrets.randbelow(1000000):06d}"
+
+                        st.session_state.reset_otp_hash = (
+                            hashlib.sha256(otp.encode()).hexdigest()
+                        )
+
+                        st.session_state.reset_otp_email = (
+                            reset_email.strip().lower()
+                        )
+
+                        st.session_state.reset_otp_expiry = (
+                            time.time() + 300
+                        )
+
+                        st.session_state.reset_otp_attempts = 0
+                        st.session_state.reset_otp_verified = False
+                        st.session_state.dev_reset_otp = otp
+
+                        st.success("OTP generated successfully!")
+
+                # Display OTP in local development mode
+
+                if st.session_state.get("dev_reset_otp"):
+                    st.info(
+                        f"Development OTP: "
+                        f"{st.session_state.dev_reset_otp}"
+                    )
+
+                    st.caption("This OTP expires in 5 minutes.")
+
+                # ================= VERIFY OTP =================
+
+                if st.session_state.get("reset_otp_hash"):
+
+                    st.divider()
+                    st.subheader("Verify OTP")
+
+                    entered_otp = st.text_input(
+                        "Enter 6-digit OTP",
+                        max_chars=6,
+                        key="entered_reset_otp"
+                    )
+
+                    if st.button(
+                        "Verify OTP",
+                        use_container_width=True,
+                        key="verify_otp"
+                    ):
+
+                        if not entered_otp:
+                            st.warning("Please enter the OTP.")
+
+                        elif time.time() > st.session_state.reset_otp_expiry:
+                            st.error(
+                                "OTP expired. Generate a new one."
+                            )
+
+                        elif st.session_state.reset_otp_attempts >= 5:
+                            st.error(
+                                "Too many incorrect attempts. "
+                                "Generate a new OTP."
+                            )
+
+                        else:
+                            entered_hash = hashlib.sha256(
+                                entered_otp.encode()
+                            ).hexdigest()
+
+                            if hmac.compare_digest(
+                                entered_hash,
+                                st.session_state.reset_otp_hash
+                            ):
+                                st.session_state.reset_otp_verified = True
+                                st.success(
+                                    "OTP verified successfully!"
+                                )
+
+                            else:
+                                st.session_state.reset_otp_attempts += 1
+                                st.error(
+                                    "Incorrect OTP. Please try again."
+                                )
+
+                # ================= CREATE NEW PASSWORD =================
+
+                if st.session_state.get(
+                    "reset_otp_verified",
+                    False
+                ):
+
+                    if time.time() > st.session_state.reset_otp_expiry:
+
+                        st.session_state.reset_otp_verified = False
+                        st.error(
+                            "OTP expired. Generate a new one."
+                        )
+
+                    else:
+
+                        st.divider()
+                        st.subheader("Create New Password")
+
+                        new_password = st.text_input(
+                            "New Password",
+                            type="password",
+                            key="new_reset_password"
+                        )
+
+                        confirm_password = st.text_input(
+                            "Confirm New Password",
+                            type="password",
+                            key="confirm_reset_password"
+                        )
+
+                        if st.button(
+                            "Reset Password",
+                            use_container_width=True,
+                            key="reset_password_button"
+                        ):
+
+                            if (
+                                not new_password
+                                or not confirm_password
+                            ):
+                                st.warning(
+                                    "Please fill in both password fields."
+                                )
+
+                            elif new_password != confirm_password:
+                                st.error("Passwords do not match.")
+
+                            else:
+                                errors = validate_password(new_password)
+
+                                if errors:
+                                    for error in errors:
+                                        st.warning(error)
+
+                                else:
+                                    try:
+                                        success = reset_password(
+                                            st.session_state.reset_otp_email,
+                                            new_password
+                                        )
+
+                                        if success:
+                                            st.success(
+                                                "Password reset successfully!"
+                                            )
+
+                                            for key in [
+                                                "reset_otp_hash",
+                                                "reset_otp_email",
+                                                "reset_otp_expiry",
+                                                "reset_otp_attempts",
+                                                "reset_otp_verified",
+                                                "dev_reset_otp",
+                                                "entered_reset_otp",
+                                                "new_reset_password",
+                                                "confirm_reset_password"
+                                            ]:
+                                                st.session_state.pop(
+                                                    key,
+                                                    None
+                                                )
+
+                                            st.session_state.auth_view = "login"
+                                            st.rerun()
+
+                                        else:
+                                            st.error(
+                                                "Unable to reset password."
+                                            )
+
+                                    except Exception as e:
+                                        st.error(
+                                            f"Password reset failed: {e}"
+                                        )
