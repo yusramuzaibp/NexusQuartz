@@ -1,9 +1,8 @@
-
 import hashlib
 import hmac
 import secrets
 
-from database.database import get_connection
+from database.database import db_cursor
 
 
 # ================= PASSWORD CONFIGURATION =================
@@ -38,7 +37,6 @@ def verify_password(password, stored_hash):
     """Verify PBKDF2 and legacy SHA-256 password hashes."""
 
     if stored_hash.startswith("pbkdf2_sha256$"):
-
         try:
             algorithm, iterations, salt_hex, hash_hex = (
                 stored_hash.split("$")
@@ -88,29 +86,19 @@ def validate_password(password):
     errors = []
 
     if len(password) < 8:
-        errors.append(
-            "Password must contain at least 8 characters."
-        )
+        errors.append("Password must contain at least 8 characters.")
 
     if not any(char.isupper() for char in password):
-        errors.append(
-            "Password must contain an uppercase letter."
-        )
+        errors.append("Password must contain an uppercase letter.")
 
     if not any(char.islower() for char in password):
-        errors.append(
-            "Password must contain a lowercase letter."
-        )
+        errors.append("Password must contain a lowercase letter.")
 
     if not any(char.isdigit() for char in password):
-        errors.append(
-            "Password must contain a number."
-        )
+        errors.append("Password must contain a number.")
 
     if not any(not char.isalnum() for char in password):
-        errors.append(
-            "Password must contain a special character."
-        )
+        errors.append("Password must contain a special character.")
 
     return errors
 
@@ -130,29 +118,24 @@ def create_user(name, email, password):
     name = name.strip()
     email = email.strip().lower()
 
-    try:
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
+    with db_cursor() as cursor:
 
-                cursor.execute(
-                    """
-                    INSERT INTO users
-                        (name, email, password, role)
-                    VALUES (%s, %s, %s, 'user')
-                    ON CONFLICT (email) DO NOTHING
-                    RETURNING id
-                    """,
-                    (
-                        name,
-                        email,
-                        hash_password(password)
-                    )
-                )
+        cursor.execute(
+            """
+            INSERT INTO users
+                (name, email, password, role)
+            VALUES (%s, %s, %s, 'user')
+            ON CONFLICT (email) DO NOTHING
+            RETURNING id
+            """,
+            (
+                name,
+                email,
+                hash_password(password)
+            )
+        )
 
-                return cursor.fetchone() is not None
-
-    except Exception:
-        raise
+        return cursor.fetchone() is not None
 
 
 # ================= LOGIN USER =================
@@ -161,54 +144,52 @@ def login_user(email, password):
 
     email = email.strip().lower()
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
+    with db_cursor() as cursor:
+
+        cursor.execute(
+            """
+            SELECT id, name, email, role, password, status
+            FROM users
+            WHERE LOWER(email) = %s
+            """,
+            (email,)
+        )
+
+        user = cursor.fetchone()
+
+        if not user:
+            return None
+
+        user_id, name, email, role, stored_hash, status = user
+
+        # Verify password
+        if not verify_password(password, stored_hash):
+            return None
+
+        # Check account status
+        status = (status or "").strip().lower()
+
+        if status != "active":
+            return {
+                "account_status": status
+            }
+
+        # Upgrade legacy SHA-256 hashes
+        if not stored_hash.startswith("pbkdf2_sha256$"):
+
+            new_hash = hash_password(password)
 
             cursor.execute(
                 """
-                SELECT id, name, email, role, password, status
-                FROM users
-                WHERE LOWER(email) = %s
+                UPDATE users
+                SET password = %s
+                WHERE id = %s
                 """,
-                (email,)
+                (new_hash, user_id)
             )
 
-            user = cursor.fetchone()
-
-            if not user:
-                return None
-
-            user_id, name, email, role, stored_hash, status = user
-
-            # Verify password before revealing account status
-            if not verify_password(password, stored_hash):
-                return None
-
-            # Normalize account status
-            status = (status or "").strip().lower()
-
-            # Reject frozen, revoked, or other inactive accounts
-            if status != "active":
-                return {
-                    "account_status": status
-                }
-
-            # Upgrade legacy SHA-256 hashes after successful login
-            if not stored_hash.startswith("pbkdf2_sha256$"):
-
-                new_hash = hash_password(password)
-
-                cursor.execute(
-                    """
-                    UPDATE users
-                    SET password = %s
-                    WHERE id = %s
-                    """,
-                    (new_hash, user_id)
-                )
-
-            # Return the existing four-field login format
-            return user_id, name, email, role
+        # Preserve existing four-field login format
+        return user_id, name, email, role
 
 
 # ================= RESET PASSWORD =================
@@ -226,19 +207,18 @@ def reset_password(email, new_password):
     email = email.strip().lower()
     new_hash = hash_password(new_password)
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
+    with db_cursor() as cursor:
 
-            cursor.execute(
-                """
-                UPDATE users
-                SET password = %s
-                WHERE LOWER(email) = %s
-                """,
-                (new_hash, email)
-            )
+        cursor.execute(
+            """
+            UPDATE users
+            SET password = %s
+            WHERE LOWER(email) = %s
+            """,
+            (new_hash, email)
+        )
 
-            return cursor.rowcount > 0
+        return cursor.rowcount > 0
 
 
 # ================= CHECK EMAIL EXISTS =================
@@ -247,17 +227,16 @@ def email_exists(email):
 
     email = email.strip().lower()
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
+    with db_cursor() as cursor:
 
-            cursor.execute(
-                """
-                SELECT 1
-                FROM users
-                WHERE LOWER(email) = %s
-                LIMIT 1
-                """,
-                (email,)
-            )
+        cursor.execute(
+            """
+            SELECT 1
+            FROM users
+            WHERE LOWER(email) = %s
+            LIMIT 1
+            """,
+            (email,)
+        )
 
-            return cursor.fetchone() is not None
+        return cursor.fetchone() is not None

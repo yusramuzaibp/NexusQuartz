@@ -2,9 +2,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import html
 
 from database.database import (
-    get_connection,
+    db_cursor,
     get_all_users,
     get_all_predictions,
     update_user,
@@ -29,23 +30,19 @@ def require_admin():
         st.stop()
 
     try:
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT role, status
-                    FROM users
-                    WHERE id = %s
-                    """,
-                    (user_id,)
-                )
+        with db_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT role, status
+                FROM users
+                WHERE id = %s
+                """,
+                (user_id,)
+            )
+            user = cursor.fetchone()
 
-                user = cursor.fetchone()
-
-    except Exception:
-        st.error(
-            "Unable to verify admin access. Please try again."
-        )
+    except Exception as e:
+        st.error(f"Unable to verify admin access: {e}")
         st.stop()
 
     if not user:
@@ -53,20 +50,15 @@ def require_admin():
         st.stop()
 
     role, status = user
-
     role = (role or "").strip().lower()
     status = (status or "").strip().lower()
 
     if status != "active":
-        st.error(
-            "Access denied. Your account is not active."
-        )
+        st.error("Access denied. Your account is not active.")
         st.stop()
 
     if role != "admin":
-        st.error(
-            "Access denied. Admin privileges are required."
-        )
+        st.error("Access denied. Admin privileges are required.")
         st.stop()
 
     return True
@@ -81,7 +73,6 @@ def show_admin_dashboard():
     st.title("🛡️ Admin Dashboard")
     st.write("Welcome to the system administration panel.")
 
-    # Fetch live database records
     try:
         users = get_all_users()
         predictions = get_all_predictions()
@@ -96,9 +87,7 @@ def show_admin_dashboard():
     total_users = len(users_df)
     total_predictions = len(predictions_df)
 
-    # Calculate statistics
     if not predictions_df.empty:
-
         high_risk = (
             predictions_df["risk"]
             .astype(str).str.strip().str.lower() == "high"
@@ -108,12 +97,10 @@ def show_admin_dashboard():
             predictions_df["risk"]
             .astype(str).str.strip().str.lower() == "low"
         ).sum()
-
     else:
         high_risk = 0
         low_risk = 0
 
-    # Dashboard styling
     st.markdown("""
         <style>
         .dashboard-subtitle {
@@ -130,7 +117,6 @@ def show_admin_dashboard():
         unsafe_allow_html=True
     )
 
-    # Statistic cards
     st.subheader("📊 System Overview")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -142,7 +128,6 @@ def show_admin_dashboard():
 
     st.divider()
 
-    # Disease-wise analytics
     st.subheader("🧬 Disease-wise Prediction Analytics")
 
     if not predictions_df.empty:
@@ -166,7 +151,6 @@ def show_admin_dashboard():
         chart_col1, chart_col2 = st.columns(2)
 
         with chart_col1:
-
             st.markdown("#### Predictions by Disease")
 
             disease_fig = px.bar(
@@ -210,13 +194,9 @@ def show_admin_dashboard():
                 paper_bgcolor="white"
             )
 
-            st.plotly_chart(
-                disease_fig,
-                use_container_width=True
-            )
+            st.plotly_chart(disease_fig, width="stretch")
 
         with chart_col2:
-
             st.markdown("#### Risk Distribution")
 
             risk_fig = px.bar(
@@ -259,14 +239,10 @@ def show_admin_dashboard():
                 paper_bgcolor="white"
             )
 
-            st.plotly_chart(
-                risk_fig,
-                use_container_width=True
-            )
+            st.plotly_chart(risk_fig, width="stretch")
 
         st.divider()
 
-        # Recent prediction activity
         st.subheader("🕒 Recent Prediction Activity")
 
         recent_predictions = predictions_df.copy()
@@ -291,7 +267,7 @@ def show_admin_dashboard():
 
         st.dataframe(
             recent_predictions[display_columns].head(5),
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
 
@@ -299,17 +275,14 @@ def show_admin_dashboard():
         st.info("No prediction records available yet.")
 
     st.divider()
-
-    # Recent registered users
     st.subheader("👤 Registered Users")
 
     if not users_df.empty:
         st.dataframe(
             users_df.head(5),
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
-
     else:
         st.info("No registered users found.")
 
@@ -332,36 +305,30 @@ def show_manage_users():
         st.info("No users registered yet.")
         return
 
-    # Users table with coloured status cells
     df = pd.DataFrame(users)
 
     def color_status(status):
-
         if status == "active":
             return (
                 "background-color: #D9F2E3;"
                 "color: #166534;"
                 "font-weight: bold;"
             )
-
         elif status == "frozen":
             return (
                 "background-color: #DCEEFF;"
                 "color: #1E40AF;"
                 "font-weight: bold;"
             )
-
         elif status == "revoked":
             return (
                 "background-color: #FEE2E2;"
                 "color: #991B1B;"
                 "font-weight: bold;"
             )
-
         return ""
 
     if "status" in df.columns:
-
         styled_df = df.style.map(
             color_status,
             subset=["status"]
@@ -369,15 +336,13 @@ def show_manage_users():
 
         st.dataframe(
             styled_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
-
     else:
-
         st.dataframe(
             df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
 
@@ -431,7 +396,6 @@ def show_manage_users():
     )
 
     st.divider()
-
     st.subheader("Manage Individual Accounts")
 
     selected_id = st.selectbox(
@@ -445,7 +409,6 @@ def show_manage_users():
 
     st.write(f"**Selected:** {selected_user['name']}")
 
-    # Edit User
     with st.expander("✏️ Edit User"):
 
         new_name = st.text_input(
@@ -468,7 +431,6 @@ def show_manage_users():
         )
 
         if st.button("Save Changes"):
-
             success, message = update_user(
                 selected_id,
                 new_name,
@@ -479,7 +441,6 @@ def show_manage_users():
             if success:
                 st.session_state["user_update_message"] = message
                 st.rerun()
-
             else:
                 st.error(message)
 
@@ -487,94 +448,68 @@ def show_manage_users():
             st.success(st.session_state["user_update_message"])
             del st.session_state["user_update_message"]
 
-    # Display account status
     if selected_user["status"] == "frozen":
-
         st.info("❄️ Account status: FROZEN")
-
     elif selected_user["status"] == "revoked":
-
         st.error("🚫 Account status: REVOKED")
-
     else:
-
         st.success("🟢 Account status: ACTIVE")
 
-    # Account management buttons
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-
         if st.button("❄️ Freeze"):
-
             success, message = update_user_status(
                 selected_id, "frozen"
             )
-
             if success:
                 st.success(message)
                 st.rerun()
-
             else:
                 st.error(message)
 
     with col2:
-
         if st.button("🔓 Unfreeze"):
-
             success, message = update_user_status(
                 selected_id, "active"
             )
-
             if success:
                 st.success(message)
                 st.rerun()
-
             else:
                 st.error(message)
 
     with col3:
-
         if st.button("🚫 Revoke Access"):
-
             success, message = update_user_status(
                 selected_id, "revoked"
             )
-
             if success:
                 st.success(message)
                 st.rerun()
-
             else:
                 st.error(message)
 
     with col4:
-
         if st.button("🔑 Grant Access"):
-
             success, message = update_user_status(
                 selected_id, "active"
             )
-
             if success:
                 st.success("Access granted successfully.")
                 st.rerun()
-
             else:
                 st.error(message)
 
     st.divider()
 
-    # Delete User
     confirm_delete = st.checkbox(
         "I confirm that I want to delete this account.",
         key="confirm_delete",
     )
 
     if st.button("🗑️ Delete User", type="primary"):
-
         if confirm_delete:
-
             success, message = delete_user(
                 selected_id,
                 st.session_state.user_id
@@ -583,10 +518,8 @@ def show_manage_users():
             if success:
                 st.success(message)
                 st.rerun()
-
             else:
                 st.error(message)
-
         else:
             st.warning("Please confirm before deleting.")
 
@@ -597,99 +530,236 @@ def show_all_predictions():
 
     require_admin()
 
-    st.title("📋 All Prediction Records")
-    st.write("View prediction records from all registered users.")
+    st.markdown("""
+        <style>
+        .prediction-count {
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 18px;
+            padding: 22px 28px;
+            margin: 18px 0;
+            border: 1px solid #d8eeee;
+        }
 
-    predictions = get_all_predictions()
+        .prediction-count-label {
+            color: #31566b;
+            font-size: 16px;
+        }
 
-    if predictions:
+        .prediction-count-number {
+            color: #24465e;
+            font-size: 42px;
+            font-weight: 600;
+        }
 
-        predictions_df = pd.DataFrame(predictions)
+        div[data-baseweb="select"] > div,
+        div[data-testid="stDateInput"] input {
+            border-radius: 12px;
+            background-color: #f8ffff;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-        # Convert timestamp into datetime format
-        predictions_df["timestamp"] = pd.to_datetime(
-            predictions_df["timestamp"],
-            errors="coerce"
+    st.title("All Prediction Records")
+
+    # Retrieve prediction records and linked patient names
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    p.id,
+                    p.condition_name,
+                    p.risk,
+                    p.timestamp,
+                    pt.name AS patient_name
+                FROM predictions p
+                LEFT JOIN patients pt
+                    ON p.patient_id = pt.id
+                ORDER BY p.timestamp DESC
+            """)
+
+            rows = cursor.fetchall()
+
+        predictions_df = pd.DataFrame(
+            rows,
+            columns=[
+                "id",
+                "Disease",
+                "Risk",
+                "Date & Time",
+                "Patient Name"
+            ]
         )
 
-        st.metric("Total Predictions", len(predictions_df))
+    except Exception as e:
+        st.error(f"Could not load prediction records: {e}")
+        return
 
-        st.subheader("Filter Prediction Records")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-
-            diseases = ["All"] + sorted(
-                predictions_df["condition"].dropna().unique().tolist()
-            )
-
-            selected_disease = st.selectbox(
-                "Filter by Disease",
-                diseases
-            )
-
-        with col2:
-
-            risks = ["All"] + sorted(
-                predictions_df["risk"].dropna().unique().tolist()
-            )
-
-            selected_risk = st.selectbox(
-                "Filter by Risk",
-                risks
-            )
-
-        with col3:
-
-            valid_dates = predictions_df["timestamp"].dropna()
-
-            if not valid_dates.empty:
-
-                min_date = valid_dates.min().date()
-                max_date = valid_dates.max().date()
-
-                selected_dates = st.date_input(
-                    "Filter by Date",
-                    value=(min_date, max_date),
-                    min_value=min_date,
-                    max_value=max_date
-                )
-
-            else:
-                selected_dates = ()
-
-        filtered_df = predictions_df.copy()
-
-        if selected_disease != "All":
-
-            filtered_df = filtered_df[
-                filtered_df["condition"] == selected_disease
-            ]
-
-        if selected_risk != "All":
-
-            filtered_df = filtered_df[
-                filtered_df["risk"] == selected_risk
-            ]
-
-        if len(selected_dates) == 2:
-
-            start_date, end_date = selected_dates
-
-            filtered_df = filtered_df[
-                (filtered_df["timestamp"].dt.date >= start_date)
-                & (filtered_df["timestamp"].dt.date <= end_date)
-            ]
-
-        st.metric("Filtered Predictions", len(filtered_df))
-
-        st.dataframe(
-            filtered_df,
-            width="stretch",
-            hide_index=True
-        )
-
-    else:
-
+    if predictions_df.empty:
         st.info("No prediction records found.")
+        return
+
+    predictions_df["Date & Time"] = pd.to_datetime(
+        predictions_df["Date & Time"],
+        errors="coerce"
+    )
+
+    predictions_df["Patient Name"] = (
+        predictions_df["Patient Name"].fillna("—")
+    )
+
+    # Filters
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        diseases = ["All"] + sorted(
+            predictions_df["Disease"].dropna().unique().tolist()
+        )
+
+        selected_disease = st.selectbox(
+            "Disease",
+            diseases
+        )
+
+    with col2:
+        risks = ["All"] + sorted(
+            predictions_df["Risk"].dropna().unique().tolist()
+        )
+
+        selected_risk = st.selectbox(
+            "Risk",
+            risks
+        )
+
+    with col3:
+        valid_dates = predictions_df["Date & Time"].dropna()
+
+        if not valid_dates.empty:
+            min_date = valid_dates.min().date()
+            max_date = valid_dates.max().date()
+
+            selected_dates = st.date_input(
+                "Date Range",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date
+            )
+        else:
+            selected_dates = ()
+
+    filtered_df = predictions_df.copy()
+
+    if selected_disease != "All":
+        filtered_df = filtered_df[
+            filtered_df["Disease"] == selected_disease
+        ]
+
+    if selected_risk != "All":
+        filtered_df = filtered_df[
+            filtered_df["Risk"] == selected_risk
+        ]
+
+    if isinstance(selected_dates, (tuple, list)) and len(selected_dates) == 2:
+        start_date, end_date = selected_dates
+
+        filtered_df = filtered_df[
+            (filtered_df["Date & Time"].dt.date >= start_date)
+            & (filtered_df["Date & Time"].dt.date <= end_date)
+        ]
+
+    # Prediction count card
+    st.markdown(f"""
+        <div class="prediction-count">
+            <div class="prediction-count-label">
+                Filtered Predictions
+            </div>
+            <div class="prediction-count-number">
+                {len(filtered_df)}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Prepare the four columns shown in the reference design
+    display_df = filtered_df[
+        ["Patient Name", "Disease", "Risk", "Date & Time"]
+    ].copy()
+
+    display_df["Date & Time"] = (
+        display_df["Date & Time"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+    # Build a clean, borderless HTML table
+    table_rows = ""
+
+    for _, row in display_df.iterrows():
+        patient_name = html.escape(str(row["Patient Name"]))
+        disease = html.escape(str(row["Disease"]))
+        risk = html.escape(str(row["Risk"]))
+        date_time = html.escape(str(row["Date & Time"]))
+
+        table_rows += f"""
+            <tr>
+                <td>{patient_name}</td>
+                <td>{disease}</td>
+                <td>{risk}</td>
+                <td>{date_time}</td>
+            </tr>
+        """
+
+    table_html = f"""
+    <style>
+        .records-table {{
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            color: #29465a;
+            font-family: Arial, sans-serif;
+            font-size: 17px;
+        }}
+
+        .records-table th {{
+            text-align: left;
+            font-size: 18px;
+            font-weight: 600;
+            padding: 12px 18px 65px 18px;
+            color: #29465a;
+            border: none;
+            background: transparent;
+        }}
+
+        .records-table td {{
+            padding: 18px;
+            border: none;
+            background: transparent;
+            vertical-align: middle;
+        }}
+
+        .records-table tr,
+        .records-table tbody,
+        .records-table thead {{
+            border: none;
+            background: transparent;
+        }}
+
+        .records-table td:first-child,
+        .records-table th:first-child {{
+            padding-left: 18px;
+        }}
+    </style>
+
+    <table class="records-table">
+        <thead>
+            <tr> 
+                <th>Patient Name</th>
+                <th>Disease</th>
+                <th>Risk</th>
+                <th>Date &amp; Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            {table_rows}
+        </tbody>
+    </table>
+    """
+
+    # Render HTML instead of displaying it as code
+    st.html(table_html)

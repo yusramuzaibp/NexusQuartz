@@ -97,11 +97,11 @@ parkinsons_model = pickle.load(open(f'{working_dir}/saved_models/parkinsons_mode
 if 'history' not in st.session_state:
     st.session_state.history = []  # each entry: {condition, result, risk, timestamp}
 
-def log_prediction(condition, result, risk, inputs=None):
+
+def log_prediction(condition, result, risk, inputs=None, patient_id=None):
     inputs = inputs or {}
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    patient_id = st.session_state.get("selected_patient_id")
     patient_details = st.session_state.get("patient_details", {})
 
     inputs["Patient Name"] = patient_details.get("name", "")
@@ -127,6 +127,7 @@ def log_prediction(condition, result, risk, inputs=None):
         inputs,
         patient_id=patient_id,
     )
+
 # ---------------------------------------------------------------------
 # Apply global application styling
 apply_global_styles()
