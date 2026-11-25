@@ -2,6 +2,7 @@
 import os
 import pickle
 from datetime import datetime
+import joblib
 
 from ui.styles import apply_global_styles
 from ui.authui import show_auth_page
@@ -86,9 +87,9 @@ if not st.session_state.logged_in:
 # ---------------------------------------------------------------------
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
-diabetes_model = pickle.load(open(f'{working_dir}/saved_models/diabetes_model.sav', 'rb'))
+diabetes_model = joblib.load(f'{working_dir}/saved_models/diabetes_model_weighted.sav')
 heart_disease_model = pickle.load(open(f'{working_dir}/saved_models/heart_disease_model.sav', 'rb'))
-parkinsons_model = pickle.load(open(f'{working_dir}/saved_models/parkinsons_model.sav', 'rb'))
+parkinsons_model = pickle.load(open(f'{working_dir}/saved_models/parkinsons_model_candidate.sav', 'rb'))
 # ---------------------------------------------------------------------
 # session state: keeps a running log of predictions for the Dashboard
 # (resets when the app restarts — swap for a CSV/DB write if you want
@@ -226,11 +227,17 @@ if selected == 'Disease Prediction':
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown('**Pregnancies**')
-                st.caption('Number of times pregnant (0 for males)')
-                Pregnancies = st.text_input('Pregnancies', placeholder='0', label_visibility='collapsed')
-
-            with col2:
+                if patient_gender == "Female":
+                    st.markdown('**Pregnancies**')
+                    st.caption('Number of times pregnant')
+                    Pregnancies = st.text_input(
+                       'Pregnancies',
+                        placeholder='0',
+                        label_visibility='collapsed',
+                        key="diabetes_pregnancies"
+                    )
+                else:
+                    Pregnancies = "0"
                 st.markdown('**Glucose Level**')
                 Glucose = st.text_input('Glucose', placeholder='120', label_visibility='collapsed')
 
@@ -288,8 +295,8 @@ if selected == 'Disease Prediction':
                             ("Pregnancies", 0, 20),
                             ("Glucose", 40, 300),
                             ("Blood Pressure", 40, 200),
-                            ("Skin Thickness", 5, 100),
-                            ("Insulin", 5, 900),
+                            ("Skin Thickness", 0, 100),
+                            ("Insulin", 0, 900),
                             ("BMI", 10, 70),
                             ("Diabetes Pedigree Function", 0.05, 3.0),
                             ("Age", 1, 120),
@@ -329,7 +336,7 @@ if selected == 'Disease Prediction':
                             # Store the selected patient ID for this prediction
                             st.session_state.selected_patient_id = patient_id
 
-                            log_prediction('Diabetes', diab_diagnosis, 'High' if is_diabetic else 'Low', inputs_dict)
+                            log_prediction('Diabetes', diab_diagnosis, 'High' if is_diabetic else 'Low', inputs_dict, patient_id=patient_id)
                             st.success(diab_diagnosis)
                             if risk_pct is not None:
                                 st.progress(risk_pct / 100)
@@ -498,10 +505,10 @@ if selected == 'Disease Prediction':
                             st.session_state.selected_patient_id = patient_id
                             if heart_prediction[0] == 1:
                                 heart_diagnosis = f'The person has a {risk_pct}% risk of Heart Disease (High Risk)'
-                                log_prediction('Heart Disease', heart_diagnosis, 'High', inputs_dict)
+                                log_prediction('Heart Disease', heart_diagnosis, 'High', inputs_dict, patient_id=patient_id)
                             else:
                                 heart_diagnosis = f'The person has a {risk_pct}% risk of Heart Disease (Low Risk)'
-                                log_prediction('Heart Disease', heart_diagnosis, 'Low', inputs_dict)
+                                log_prediction('Heart Disease', heart_diagnosis, 'Low', inputs_dict, patient_id=patient_id)
 
                             st.success(heart_diagnosis)
                             st.progress(heart_proba)
@@ -703,7 +710,7 @@ if selected == 'Disease Prediction':
                             if risk_pct is not None:
                                 parkinsons_diagnosis += f' ({risk_pct}% estimated risk)'
 
-                            log_prediction('Parkinsons', parkinsons_diagnosis, 'High' if has_pd else 'Low', inputs_dict)
+                            log_prediction('Parkinsons', parkinsons_diagnosis, 'High' if has_pd else 'Low', inputs_dict, patient_id=patient_id)
                             st.success(parkinsons_diagnosis)
                             if risk_pct is not None:
                                 st.progress(risk_pct / 100)
