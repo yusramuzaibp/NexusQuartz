@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import time
 from pathlib import Path
+import streamlit.components.v1 as components
 
 from auth.authentication import (
     create_user,
@@ -101,6 +102,54 @@ def show_auth_page():
         font-size: 17px;
         font-weight: 700;
         margin-bottom: 25px;
+    }}
+    /* ================= NEXUS QUARTZ LOGO ================= */
+
+    .nexus-brand {{
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 28px;
+    }}
+
+    .nexus-logo {{
+        width: 58px;
+        height: 58px;
+        flex-shrink: 0;
+    }}
+
+    .nexus-brand-name {{
+        color: #07566B;
+        font-size: 27px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+    }}
+    .nexus-hexagon {{
+        width: 58px;
+        height: 58px;
+        background: #087E8B;
+        clip-path: polygon(
+            50% 0%,
+            95% 25%,
+            95% 75%,
+            50% 100%,
+            5% 75%,
+            5% 25%
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }}
+
+    .nexus-heartbeat {{
+        width: 45px;
+        height: 30px;
+    }}
+
+    .nexus-heartbeat svg {{
+        width: 100%;
+        height: 100%;
     }}
 
     .feature-item {{
@@ -225,46 +274,147 @@ def show_auth_page():
 
     with left_col:
 
-        st.html("""
-            <div class="hero-card">
+        components.html(
+            """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: transparent;
+                        font-family: Arial, sans-serif;
+                    }
 
-                <div class="hero-tag">
-                    Nexuz Quartz
+                    .hero-card {
+                        background: linear-gradient(
+                            145deg,
+                            rgba(191, 236, 239, 0.75),
+                            rgba(221, 243, 244, 0.75)
+                        );
+                        padding: 40px 30px;
+                        border-radius: 22px;
+                        min-height: 480px;
+                        margin-top: 25px;
+                        box-sizing: border-box;
+                        border: 1px solid rgba(255,255,255,0.8);
+                        box-shadow: 0 12px 35px rgba(5,45,65,0.15);
+                    }
+
+                    .nexus-brand {
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        margin-bottom: 28px;
+                    }
+
+                    .brand-name {
+                        font-size: 27px;
+                        font-weight: 800;
+                        color: #07566B;
+                        white-space: nowrap;
+                    }
+
+                    h1 {
+                        color: #07566B;
+                        font-size: 31px;
+                        line-height: 1.3;
+                        font-weight: 700;
+                    }
+
+                    p {
+                        color: #36525F;
+                        font-size: 16px;
+                        line-height: 1.8;
+                    }
+
+                    .tagline {
+                        font-style: italic;
+                        font-size: 19px;
+                    }
+
+                    .feature-item {
+                        color: #07566B;
+                        font-size: 15px;
+                        font-weight: 600;
+                        margin-top: 22px;
+                    }
+                </style>
+            </head>
+
+            <body>
+
+                <div class="hero-card">
+
+                    <!-- NEXUS QUARTZ LOGO -->
+
+                    <div class="nexus-brand">
+
+                        <svg width="48" height="48"
+                             viewBox="0 0 100 100"
+                             xmlns="http://www.w3.org/2000/svg">
+
+                            <polygon
+                                points="50,5 90,27 90,73 50,95 10,73 10,27"
+                                fill="none"
+                                stroke="#07566B"
+                                stroke-width="7"
+                                stroke-linejoin="round"/>
+
+                            <polyline
+                                points="18,52 34,52 43,32 56,70 67,45 80,45"
+                                fill="none"
+                                stroke="#07566B"
+                                stroke-width="6"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"/>
+
+                        </svg>
+
+                        <div class="brand-name">
+                            Nexus Quartz
+                        </div>
+
+                    </div>
+
+                    <h1>🩺 Multiple Disease Prediction</h1>
+
+                    <p class="tagline">
+                        Your Health. Our Intelligence.
+                    </p>
+
+                    <p>
+                        Welcome to the Multiple Disease Prediction System.
+                        Use intelligent machine learning technology to
+                        explore health insights and manage your
+                        prediction records.
+                    </p>
+
+                    <div class="feature-item">
+                        🧠 &nbsp; AI-Powered Disease Prediction
+                    </div>
+
+                    <div class="feature-item">
+                        📊 &nbsp; Personal Health Reports
+                    </div>
+
+                    <div class="feature-item">
+                        💬 &nbsp; AI Health Assistant
+                    </div>
+
+                    <div class="feature-item">
+                        👨‍⚕️ &nbsp; Specialist Discovery
+                    </div>
+
                 </div>
 
-                <h1>
-                    🩺 Multiple Disease Prediction
-                </h1>
-
-                <p style="font-style: italic; font-size: 19px;">
-                    Your Health. Our Intelligence.
-                </p>
-
-                <p>
-                    Welcome to the Multiple Disease Prediction System.
-                    Use intelligent machine learning technology to
-                    explore health insights and manage your
-                    prediction records.
-                </p>
-
-                <div class="feature-item">
-                    🧠 &nbsp; AI-Powered Disease Prediction
-                </div>
-
-                <div class="feature-item">
-                    📊 &nbsp; Personal Health Reports
-                </div>
-
-                <div class="feature-item">
-                    💬 &nbsp; AI Health Assistant
-                </div>
-
-                <div class="feature-item">
-                    👨‍⚕️ &nbsp; Specialist Discovery
-                </div>
-
-            </div>
-        """)
+            </body>
+            </html>
+            """,
+            height=570,
+            scrolling=False
+        )
 
     # ================= RIGHT LOGIN SECTION =================
 
