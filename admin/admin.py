@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import html
+from utils.encryption import decrypt_text
 
 from database.database import (
     db_cursor,
@@ -577,10 +578,25 @@ def show_all_predictions():
                 ORDER BY p.timestamp DESC
             """)
 
+
             rows = cursor.fetchall()
 
+        # Decrypt patient names before displaying them
+        decrypted_rows = []
+
+        for row in rows:
+            patient_name = decrypt_text(row[4]) if row[4] else "—"
+
+            decrypted_rows.append((
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                patient_name
+            ))
+
         predictions_df = pd.DataFrame(
-            rows,
+            decrypted_rows,
             columns=[
                 "id",
                 "Disease",
@@ -589,6 +605,7 @@ def show_all_predictions():
                 "Patient Name"
             ]
         )
+
 
     except Exception as e:
         st.error(f"Could not load prediction records: {e}")

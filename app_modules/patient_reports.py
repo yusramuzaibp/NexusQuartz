@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import re
-
+from reportlab.platypus import Image
 from io import BytesIO
 
 from database.database import get_user_predictions
@@ -15,9 +15,7 @@ from reportlab.platypus import (
 )
 
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-
-
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 def show_patient_reports():
 
@@ -66,6 +64,7 @@ def show_patient_reports():
                 risk_display = f"{risk_percentage} · {r['risk']}"
 
                 report_rows.append({
+                    "Patient ID": r['patient_code'],
                     "Patient Name": r['patient_name'],
                     "Disease": r['condition'],
                     "Risk": risk_display,
@@ -73,6 +72,13 @@ def show_patient_reports():
                 })
 
             df = pd.DataFrame(report_rows)
+            
+                        # Search by Patient ID or Patient Name
+            search_query = st.text_input(
+                "Search Patient",
+                placeholder="Enter Patient ID or Patient Name...",
+                key="patient_report_search"
+            )
 
             # Filters
             col1, col2 = st.columns(2)
@@ -92,7 +98,7 @@ def show_patient_reports():
                     key="patient_reports_risk_v2"
                 )
 
-            # Apply filters
+            # Apply filters and search
             filtered_pairs = [
                 (r, row)
                 for r, row in zip(records, report_rows)
@@ -101,8 +107,11 @@ def show_patient_reports():
                     risk_filter == "All"
                     or r["risk"] == risk_filter
                 )
+                and (
+                    search_query.strip().lower() in str(row["Patient ID"]).lower()
+                    or search_query.strip().lower() in str(row["Patient Name"]).lower()
+                )
             ]
-
             filtered_records = [r for r, row in filtered_pairs]
             filtered_rows = [row for r, row in filtered_pairs]
 
@@ -111,30 +120,27 @@ def show_patient_reports():
             )
 
             # Table headers
-            header_cols = st.columns([2, 1.5, 1.5, 2, 1.2])
-
-            header_cols[0].markdown("**Patient Name**")
-            header_cols[1].markdown("**Disease**")
-            header_cols[2].markdown("**Risk**")
-            header_cols[3].markdown("**Date & Time**")
-            header_cols[4].markdown("**Report**")
+            header_cols = st.columns([1.5, 2, 1.5, 1.5, 2, 1.2])
+            header_cols[0].markdown("**Patient ID**")
+            header_cols[1].markdown("**Patient Name**")            
+            header_cols[2].markdown("**Disease**")
+            header_cols[3].markdown("**Risk**")
+            header_cols[4].markdown("**Date & Time**")
+            header_cols[5].markdown("**Report**")
 
             st.divider()
 
             # Table rows
             for record, row in zip(filtered_records, filtered_rows):
 
-                cols = st.columns([2, 1.5, 1.5, 2, 1.2])
+                cols = st.columns([1.5, 2, 1.5, 1.5, 2, 1.2])
+                cols[0].write(row["Patient ID"])
+                cols[1].write(row["Patient Name"])
+                cols[2].write(row["Disease"])
+                cols[3].write(row["Risk"])
+                cols[4].write(row["Date & Time"])
 
-                cols[0].write(row["Patient Name"])
-                cols[1].write(row["Disease"])
-                cols[2].write(row["Risk"])
-                cols[3].write(row["Date & Time"])
-
-                if cols[4].button(
-                    "View",
-                    key=f"view_{record['id']}"
-                ):
+                if cols[5].button("View", key=f"view_{record['id']}"):
                     st.session_state.selected_report_id = record["id"]
                     st.rerun()
 
@@ -233,58 +239,175 @@ def show_patient_reports():
             styles = getSampleStyleSheet()
             elements = []
 
+        # ================================================================
+        # PDF REPORT GENERATION
+        # ================================================================
+
+        pdf_buffer = BytesIO()
+
+        doc = SimpleDocTemplate(
+            pdf_buffer,
+            pagesize=A4
+        )
+
+        styles = getSampleStyleSheet()
+        elements = []
+
+        # ================================================================
+        # PDF REPORT BRANDING
+        # ================================================================
+
+        logo = Image("assets/logo.png", width=350, height=100)
+        logo.hAlign = "CENTER"
+
+        elements.append(logo)
+        elements.append(Spacer(1, 20))
+
+        report_title_style = ParagraphStyle(
+            "ReportTitle",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=12,
+            alignment=0
+        )
+
+        elements.append(
+            Paragraph(
+                "PATIENT MEDICAL PREDICTION REPORT",
+                report_title_style
+            )
+        )
+
+        elements.append(Spacer(1, 20))
+
+        # ================================================================
+        # TABLE 1: PATIENT INFORMATION
+        # ================================================================
+
+        elements.append(
+            Paragraph(
+                "Patient Information",
+                styles["Heading2"]
+            )
+        )
+
+        patient_table_data = [
+            ["Field", "Details"],
+            ["Patient Name", str(patient_data["Patient Name"])],
+            ["Patient ID", str(patient_data["Patient ID"])],
+            ["Age", str(patient_data["Age"])],
+            ["Gender", str(patient_data["Gender"])],
+            ["Contact Number", str(patient_data["Contact Number"])],
+        ]
+
+        patient_table = Table(
+            patient_table_data,
+            colWidths=[180, 280]
+        )
+        patient_table.hAlign = "LEFT"
+
+        elements.append(patient_table)
+        elements.append(Spacer(1, 20))
+        # ================================================================
+        # TABLE 2: PREDICTION SUMMARY
+        # ================================================================
+
+        elements.append(
+            Paragraph(
+                "Prediction Summary",
+                styles["Heading2"]
+            )
+        )
+
+        prediction_table_data = [["Field", "Details"]]
+
+        for key, value in prediction_data.items():
+            prediction_table_data.append([
+                str(key),
+                str(value)
+            ])
+
+        prediction_table = Table(
+            prediction_table_data,
+            colWidths=[180, 280]
+        )
+        prediction_table.hAlign = "LEFT"
+
+        elements.append(prediction_table)
+
+        # ================================================================
+        # TABLE 3: CLINICAL PARAMETERS
+        # ================================================================
+
+        elements.append(
+            Paragraph(
+                "Clinical Parameters",
+                styles["Heading2"]
+            )
+        )
+
+        clinical_table_data = [
+            ["Parameter", "Value"]
+        ]
+
+        if clinical_data:
+            for key, value in clinical_data.items():
+                clinical_table_data.append([
+                    str(key),
+                    str(value)
+                ])
+
+            clinical_table = Table(
+                clinical_table_data,
+                colWidths=[280, 180]
+            )
+            clinical_table.hAlign = "LEFT"
+
+            elements.append(clinical_table)
+        else:
             elements.append(
                 Paragraph(
-                    "Patient Medical Prediction Report",
-                    styles["Title"]
+                    "No clinical parameters available.",
+                    styles["Normal"]
                 )
             )
 
-            elements.append(Spacer(1, 20))
+        elements.append(Spacer(1, 25))
 
-            elements.append(
-                Paragraph("Patient Information", styles["Heading2"])
+        # ================================================================
+        # MEDICAL DISCLAIMER
+        # ================================================================
+
+        disclaimer_style = ParagraphStyle(
+            "Disclaimer",
+            parent=styles["Normal"],
+            fontSize=9,
+            leading=13,
+            alignment=0
+        )
+
+        elements.append(
+            Paragraph(
+                "<b>Disclaimer:</b> This report is generated by a "
+                "machine-learning prediction system and is not a "
+                "confirmed medical diagnosis. Please consult a "
+                "qualified healthcare professional.",
+                disclaimer_style
             )
+        )
 
-            patient_table_data = [["Field", "Details"]]
+        # ================================================================
+        # BUILD PDF
+        # ================================================================
 
-            for key, value in patient_data.items():
-                patient_table_data.append([key, str(value)])
+        doc.build(elements)
 
-            elements.append(Table(patient_table_data))
-            elements.append(Spacer(1, 20))
+        pdf_buffer.seek(0)
 
-            elements.append(
-                Paragraph("Prediction Summary", styles["Heading2"])
-            )
-
-            prediction_table_data = [["Field", "Details"]]
-
-            for key, value in prediction_data.items():
-                prediction_table_data.append([key, str(value)])
-
-            elements.append(Table(prediction_table_data))
-            elements.append(Spacer(1, 20))
-
-            elements.append(
-                Paragraph("Clinical Parameters", styles["Heading2"])
-            )
-
-            clinical_table_data = [["Parameter", "Value"]]
-
-            for key, value in clinical_data.items():
-                clinical_table_data.append([str(key), str(value)])
-
-            elements.append(Table(clinical_table_data))
-
-            doc.build(elements)
-
-            pdf_buffer.seek(0)
-
-            st.download_button(
-                label="Download Patient Report PDF",
-                data=pdf_buffer.getvalue(),
-                file_name=f"Patient_Report_{selected_record['id']}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+        st.download_button(
+            label="Download Patient Report PDF",
+            data=pdf_buffer.getvalue(),
+            file_name=f"Patient_Report_{selected_record['id']}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
