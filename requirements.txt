@@ -8,3 +8,4 @@ python-dotenv==1.2.4
 cryptography
 reportlab==5.0.1
 joblib==1.5.3
+plotly
