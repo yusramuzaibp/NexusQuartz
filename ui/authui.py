@@ -6,6 +6,10 @@ import hmac
 import time
 from pathlib import Path
 import streamlit.components.v1 as components
+import os
+import smtplib
+from email.message import EmailMessage
+from dotenv import load_dotenv
 
 from auth.authentication import (
     create_user,
@@ -17,6 +21,51 @@ from auth.authentication import (
 
 from database.database import get_user_predictions
 
+# ================= GMAIL OTP DELIVERY =================
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
+
+
+def send_reset_otp(receiver_email, otp):
+
+    sender_email = os.getenv("SMTP_EMAIL")
+    app_password = os.getenv("SMTP_APP_PASSWORD")
+
+    if not sender_email or not app_password:
+        raise ValueError("Gmail SMTP credentials are missing from .env")
+
+    message = EmailMessage()
+
+    message["Subject"] = "Nexus Quartz - Password Reset OTP"
+    message["From"] = sender_email
+    message["To"] = receiver_email
+
+    message.set_content(
+        f"""
+Hello,
+
+We received a request to reset your Nexus Quartz account password.
+
+Your OTP is: {otp}
+
+This OTP is valid for 2 minutes.
+
+If you did not request this password reset, please ignore this email.
+
+Regards,
+Nexus Quartz Team
+"""
+    )
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as server:
+
+        server.login(
+            sender_email,
+            app_password.replace(" ", "")
+        )
+
+        server.send_message(message)
 
 def show_auth_page():
 
@@ -680,7 +729,19 @@ def show_auth_page():
                     key="generate_otp"
                 ):
 
-                    if not reset_email:
+                    last_sent = st.session_state.get(
+                        "reset_otp_last_sent", 0
+                    )
+
+                    remaining = 60 - (time.time() - last_sent)
+
+                    if remaining > 0:
+                        st.warning(
+                            f"Please wait {int(remaining) + 1} seconds "
+                            "before requesting another OTP."
+                        )
+
+                    elif not reset_email:
                         st.warning(
                             "Please enter your registered email."
                         )
@@ -692,35 +753,48 @@ def show_auth_page():
 
                     else:
                         otp = f"{secrets.randbelow(1000000):06d}"
+                        recipient_email = reset_email.strip().lower()
 
-                        st.session_state.reset_otp_hash = (
-                            hashlib.sha256(otp.encode()).hexdigest()
-                        )
+                        try:
+                            # Send OTP to the user's registered email
+                            send_reset_otp(recipient_email, otp)
+                            st.session_state.reset_otp_last_sent = time.time()
 
-                        st.session_state.reset_otp_email = (
-                            reset_email.strip().lower()
-                        )
+                            # Store OTP hash after successful email delivery
+                            st.session_state.reset_otp_hash = (
+                                hashlib.sha256(otp.encode()).hexdigest()
+                            )
 
-                        st.session_state.reset_otp_expiry = (
-                            time.time() + 300
-                        )
+                            st.session_state.reset_otp_email = (
+                                recipient_email
+                            )
 
-                        st.session_state.reset_otp_attempts = 0
-                        st.session_state.reset_otp_verified = False
-                        st.session_state.dev_reset_otp = otp
+                            st.session_state.reset_otp_expiry = (
+                                time.time() + 120
+                            )
 
-                        st.success("OTP generated successfully!")
+                            st.session_state.reset_otp_attempts = 0
+                            st.session_state.reset_otp_verified = False
 
-                # Display OTP in local development mode
+                            st.session_state.pop(
+                                "dev_reset_otp",
+                                None
+                            )
 
-                if st.session_state.get("dev_reset_otp"):
-                    st.info(
-                        f"Development OTP: "
-                        f"{st.session_state.dev_reset_otp}"
-                    )
+                            st.success(
+                                "OTP sent successfully! "
+                                "Please check your registered email."
+                            )
 
-                    st.caption("This OTP expires in 5 minutes.")
+                            st.caption(
+                                "Your OTP is valid for 2 minutes."
+                            )
 
+                        except Exception:
+                            st.error(
+                                "Unable to send OTP. Please try again "
+                                "or check your email configuration."
+                            )
                 # ================= VERIFY OTP =================
 
                 if st.session_state.get("reset_otp_hash"):
